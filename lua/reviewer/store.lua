@@ -71,6 +71,13 @@ function M.set_repo(root)
   id_counter = 0
 end
 
+---Repository root the store is keyed to, resolved from the cwd when the caller
+---never set one. `send` needs it to build editor file references.
+---@return string|nil
+function M.root()
+  return repo_root or git_line({ "git", "rev-parse", "--show-toplevel" })
+end
+
 ---One store per (repository, branch): comments never leak across branches.
 ---@return string|nil
 local function storage_path()

@@ -96,13 +96,25 @@ local function main()
   local files = vim.fn.glob(vim.fn.stdpath("data") .. "/reviewer/*feature-x.json", false, true)
   eq(#files, 1, "one branch-scoped store file")
 
-  -- Successful send clears the store and the file.
+  -- Successful send clears the store and the file. The payload is sidekick text
+  -- chunks, so flatten them the way sidekick does.
   local sent
   local sent_opts
+  local function flatten(text)
+    local out = {}
+    for _, line in ipairs(text or {}) do
+      local parts = {}
+      for _, chunk in ipairs(line) do
+        parts[#parts + 1] = chunk[1]
+      end
+      out[#out + 1] = table.concat(parts)
+    end
+    return table.concat(out, "\n")
+  end
   package.loaded["sidekick.cli"] = {
     send = function(opts)
       sent_opts = opts
-      sent = opts.msg
+      sent = flatten(opts.text)
     end,
   }
   send.setup({ tool = "copilot" })
@@ -111,6 +123,38 @@ local function main()
   eq(sent_opts.name, "copilot", "configured tool is passed to sidekick")
   eq(store.count(), 0, "send clears comments")
   eq(#vim.fn.glob(vim.fn.stdpath("data") .. "/reviewer/*.json", false, true), 0, "send removes store file")
+
+  -- Without sidekick's location context, positions fall back to the plain form.
+  store.add("src/a.lua", 3, "no context module")
+  send.to_sidekick()
+  assert(sent:find("`src/a.lua:3`", 1, true), "plain fallback location")
+  assert(not sent:find("`~`", 1, true), "chunk header omits the old-side clause without old comments")
+
+  -- With it, each comment carries a file reference built from the repo root.
+  local calls = {}
+  package.loaded["sidekick.cli.context.location"] = {
+    get = function(ctx, o)
+      calls[#calls + 1] = { ctx = ctx, kind = o and o.kind }
+      local ref = { { "@" .. ctx.name } }
+      if ctx.range then
+        ref[1][1] = ref[1][1] .. " :L" .. ctx.range.from[1]
+      end
+      return { ref }
+    end,
+  }
+  store.add("src/a.lua", 7, "referenced")
+  store.add("src/b.lua", 0, "whole file")
+  store.add("src/c.lua", 2, "old side", "old")
+  send.to_sidekick()
+  assert(sent:find("@" .. root .. "/src/a.lua :L7", 1, true), "mention uses the repo root")
+  eq(calls[1].kind, "line", "line-level reference")
+  eq(calls[1].ctx.range.from[1], 7, "reference starts at the comment line")
+  eq(calls[2].ctx.range, nil, "file comment has no range")
+  eq(#calls, 2, "old-side comments are not referenced")
+  assert(sent:find("@" .. root .. "/src/b.lua", 1, true), "file comment references the whole file")
+  assert(sent:find("`src/c.lua:~2`", 1, true), "old-side comments keep the plain form")
+  assert(sent:find("`~` = old side", 1, true), "chunk header explains old-side comments")
+  package.loaded["sidekick.cli.context.location"] = nil
 
   -- Without a configured tool, sidekick picks its own.
   store.add("src/a.lua", 1, "no tool")

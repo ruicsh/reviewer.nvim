@@ -20,6 +20,27 @@ function M.setup(o)
   opts = o or {}
 end
 
+---Explain `~` only when an old-side comment is present: inline diffs cannot
+---produce one, and the clause is noise there.
+---@param all ReviewerComment[]
+---@return string
+local function header(all)
+  for _, comment in ipairs(all) do
+    if (comment.side or "new") == "old" then
+      return "Code review comments on the current diff (`~` = old side)."
+    end
+  end
+  return "Code review comments on the current diff."
+end
+
+---Plain location suffix for a comment (`\`file:line\` - text`), shared by the
+---markdown preview and the chunk fallback.
+---@param comment ReviewerComment
+---@return string
+local function plain_suffix(comment)
+  return string.format("`%s` - %s", location.format(comment), (comment.text:gsub("\n", " ")))
+end
+
 ---Markdown list of every comment, one `file:line - text` per line. A `~`
 ---before the line number marks the old (left) side of the diff.
 ---@return string|nil nil when there are no comments
@@ -29,25 +50,63 @@ function M.generate_markdown()
     return nil
   end
 
-  -- Explain `~` only when an old-side comment is present: inline diffs cannot
-  -- produce one, and the clause is noise there.
-  local has_old = false
-  for _, comment in ipairs(all) do
-    if (comment.side or "new") == "old" then
-      has_old = true
-      break
-    end
-  end
-
-  local lines = {
-    has_old and "Code review comments on the current diff (`file:line` or `file:start-end`, `~` = old side)."
-      or "Code review comments on the current diff (`file:line` or `file:start-end`).",
-    "",
-  }
+  local lines = { header(all), "" }
   for i, comment in ipairs(all) do
-    table.insert(lines, string.format("%d. `%s` - %s", i, location.format(comment), (comment.text:gsub("\n", " "))))
+    table.insert(lines, string.format("%d. %s", i, plain_suffix(comment)))
   end
   return table.concat(lines, "\n")
+end
+
+---Sidekick text chunks for a comment's position, or nil when the plain form has
+---to be used. Mentions point at the current file, so old-side comments keep the
+---plain form: their line is gone from it.
+---@param Loc table `sidekick.cli.context.location`
+---@param comment ReviewerComment
+---@param root string repository root
+---@return sidekick.Text|nil
+local function mention(Loc, comment, root)
+  local path = vim.fs.joinpath(root, comment.file)
+  if comment.line == 0 then
+    return Loc.get({ name = path, cwd = root })[1]
+  end
+  if (comment.side or "new") == "old" then
+    return nil
+  end
+  local last = comment.end_line or comment.line
+  return Loc.get({
+    name = path,
+    cwd = root,
+    range = { from = { comment.line, 0 }, to = { last, 0 }, kind = "line" },
+  }, { kind = "line" })[1]
+end
+
+---Payload as sidekick text chunks, so each tool formats its own file reference
+---(`sidekick.cli.context.location` tags the chunks and `tool:format` rewrites
+---them). Without the location context, positions fall back to the plain form.
+---@param all ReviewerComment[]
+---@return sidekick.Text[]
+local function payload_text(all)
+  local root = store.root()
+  local ok, Loc = pcall(require, "sidekick.cli.context.location")
+
+  local lines = { { { header(all) } }, {} }
+  for i, comment in ipairs(all) do
+    local line = { { string.format("%d. ", i) } }
+    -- `mention` calls an internal sidekick module; a signature change there
+    -- must degrade to the plain form, not raise out of `to_sidekick`.
+    local loc
+    if ok and root then
+      local ok2, res = pcall(mention, Loc, comment, root)
+      loc = ok2 and res or nil
+    end
+    if loc then
+      vim.list_extend(line, loc)
+    else
+      table.insert(line, { plain_suffix(comment) })
+    end
+    table.insert(lines, line)
+  end
+  return lines
 end
 
 ---Send every comment to sidekick.nvim, then remove them all.
@@ -58,14 +117,13 @@ function M.to_sidekick()
     return
   end
 
-  local count = store.count()
-  if count == 0 then
+  local all = store.get_all()
+  if #all == 0 then
     notify("No comments to send", vim.log.levels.WARN)
     return
   end
 
-  local markdown = M.generate_markdown()
-  local sent, err = pcall(sidekick.send, { msg = markdown, name = opts.tool })
+  local sent, err = pcall(sidekick.send, { text = payload_text(all), name = opts.tool })
   if not sent then
     notify("Failed to send to sidekick: " .. tostring(err), vim.log.levels.ERROR)
     return
@@ -73,7 +131,7 @@ function M.to_sidekick()
 
   store.clear()
   marks.clear_all()
-  notify(string.format("Sent %d comment(s) to sidekick", count), vim.log.levels.INFO)
+  notify(string.format("Sent %d comment(s) to sidekick", #all), vim.log.levels.INFO)
 end
 
 return M

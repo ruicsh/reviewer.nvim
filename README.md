@@ -90,7 +90,7 @@ One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo
 `<localleader>S` sends a markdown list, one line per comment:
 
 ```
-Code review comments on the current diff (`file:line` or `file:start-end`, `~` = old side).
+Code review comments on the current diff (`~` = old side).
 
 1. `src/api.ts:23` - endpoint does not handle errors
 2. `src/utils.ts:~10` - old implementation was cleaner
@@ -99,6 +99,8 @@ Code review comments on the current diff (`file:line` or `file:start-end`, `~` =
 ```
 
 A `~` before the line number marks the old (left) side of the diff; the header only mentions it when such a comment is present. Inline diffs never produce one, since the original pane is not shown. A bare path is a file-level comment. `start-end` is a multi-line comment, sent as one line. Multi-line comments are flattened to one line. After sending, all comments and their inline marks are removed.
+
+The payload is built as sidekick text, so new-side comments are sent as that tool's own file reference (`@file#L10-20` for Claude, `@file :L10-L20` elsewhere) and expand to the file. Old-side comments keep the `file:~10` form, since a reference would point at the current file where that line no longer exists.
 
 ## Tests
 
