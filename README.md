@@ -6,7 +6,7 @@ A stripped-down, branch-scoped review layer for [codediff.nvim](https://github.c
 
 - Neovim >= 0.10
 - [codediff.nvim](https://github.com/esmuellert/codediff.nvim)
-- [sidekick.nvim](https://github.com/folke/sidekick.nvim) (only for `S`)
+- [sidekick.nvim](https://github.com/folke/sidekick.nvim) (only for sending comments)
 
 ## Install
 
@@ -26,7 +26,7 @@ With lazy.nvim:
 
 Load the plugin before you open codediff (`VeryLazy` or `lazy = false`). The keys are buffer-local to the codediff panes, so they only work once the plugin is loaded. reviewer.nvim follows the current codediff tab: keys, marks, and comments apply to the active tab's session.
 
-sidekick.nvim is optional and loaded on demand: it is only required when you press `S`. The `optional = true` entry lets lazy.nvim load it when `S` requires it without force-loading it at startup.
+sidekick.nvim is optional and loaded on demand: it is only required when you send comments. The `optional = true` entry lets lazy.nvim load it when sending without force-loading it at startup.
 
 ## Options
 
@@ -36,21 +36,41 @@ opts = {
     -- sidekick tool that receives the comments; nil = sidekick's current tool
     tool = "copilot",
   },
+  -- Keys are buffer-local to the codediff panes. Omit a key to keep its
+  -- default; set it to false to disable that action.
+  keys = {
+    add_comment = "<localleader>i",
+    file_comment = "<localleader>F",
+    edit_comment = "<localleader>e",
+    delete_comment = "<localleader>d",
+    list_comments = "<localleader>c",
+    next_comment = "]n",
+    prev_comment = "[n",
+    send_comments = "<localleader>S",
+    close_review = "<localleader>q",
+  },
 }
 ```
 
 ## Keys (in a codediff diff)
 
-| Key         | Action                                         |
-| ----------- | ---------------------------------------------- |
-| `i`         | Add a comment at the cursor line               |
-| `F`         | Add or edit a file-level comment               |
-| `e`         | Edit the comment at the cursor                 |
-| `d`         | Delete the comment at the cursor               |
-| `c`         | List all comments and jump to one              |
-| `]n` / `[n` | Next / previous comment                        |
-| `S`         | Send all comments to sidekick, then clear them |
-| `q`         | Clear comments and close the review tab        |
+| Key                | Option           | Action                                         |
+| ------------------ | ---------------- | ---------------------------------------------- |
+| `<localleader>i`   | `add_comment`    | Add a comment at the cursor line               |
+| `<localleader>F`   | `file_comment`   | Add or edit a file-level comment               |
+| `<localleader>e`   | `edit_comment`   | Edit the comment at the cursor                 |
+| `<localleader>d`   | `delete_comment` | Delete the comment at the cursor               |
+| `<localleader>c`   | `list_comments`  | List all comments and jump to one              |
+| `]n`               | `next_comment`   | Next comment                                   |
+| `[n`               | `prev_comment`   | Previous comment                               |
+| `<localleader>S`   | `send_comments`  | Send all comments to sidekick, then clear them |
+| `<localleader>q`   | `close_review`   | Clear comments and close the review tab        |
+
+The diff buffers stay editable: no key the plugin sets shadows a normal Vim
+editing key, so you can fix the file in the codediff pane.
+
+`<localleader>` is resolved when the keys are installed, that is when a
+codediff session opens, so set `vim.g.maplocalleader` before you open codediff.
 
 Comment popup: `<C-s>` submits, `<Esc>` or `q` cancels.
 
@@ -60,7 +80,7 @@ One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo
 
 ## Send format
 
-`S` sends a markdown list, one line per comment:
+`<localleader>S` sends a markdown list, one line per comment:
 
 ```
 Code review comments on the current diff (`file:line`, `~` = old side).

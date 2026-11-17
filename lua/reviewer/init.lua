@@ -8,14 +8,15 @@ local send = require("reviewer.send")
 
 local initialized = false
 
----Attach reviewer to codediff sessions. Keys are fixed.
----@param opts? { sidekick?: { tool?: string } } `sidekick.tool` is the tool `S` sends to; nil keeps sidekick's current tool
+---Attach reviewer to codediff sessions.
+---@param opts? { sidekick?: { tool?: string }, keys?: ReviewerKeys } `sidekick.tool` is the sidekick tool that receives sent comments; nil keeps sidekick's current tool. `keys` overrides the buffer-local keymaps.
 function M.setup(opts)
   if initialized then
     return
   end
 
   send.setup(opts and opts.sidekick)
+  keymaps.setup(opts and opts.keys)
 
   vim.api.nvim_set_hl(0, "ReviewerComment", { link = "Comment", default = true })
 

@@ -19,12 +19,53 @@ local function clear_buffer(bufnr)
   keymapped[bufnr] = nil
 end
 
+---@class ReviewerKeys
+---@field add_comment string|false Keymap for adding a comment at the cursor; `false` disables it
+---@field file_comment string|false Keymap for adding/editing a file-level comment
+---@field edit_comment string|false Keymap for editing the comment at the cursor
+---@field delete_comment string|false Keymap for deleting the comment at the cursor
+---@field list_comments string|false Keymap for listing comments
+---@field next_comment string|false Keymap for the next comment
+---@field prev_comment string|false Keymap for the previous comment
+---@field send_comments string|false Keymap for sending comments to sidekick
+---@field close_review string|false Keymap for closing the review
+
+---@type ReviewerKeys
+local defaults = {
+  add_comment = "<localleader>i",
+  file_comment = "<localleader>F",
+  edit_comment = "<localleader>e",
+  delete_comment = "<localleader>d",
+  list_comments = "<localleader>c",
+  next_comment = "]n",
+  prev_comment = "[n",
+  send_comments = "<localleader>S",
+  close_review = "<localleader>q",
+}
+
+---@type ReviewerKeys
+local config = vim.deepcopy(defaults)
+
+---Override the buffer-local keymaps. Omitted keys keep their default; `false`
+---disables a keymap.
+---@param opts? ReviewerKeys
+function M.setup(opts)
+  config = vim.tbl_extend("force", vim.deepcopy(defaults), opts or {})
+end
+
 ---@param bufnr number
 local function set_buffer_keymaps(bufnr)
   clear_buffer(bufnr)
   local mapped = {}
 
-  local function set(lhs, rhs, desc)
+  ---@param key string config field
+  ---@param rhs function
+  ---@param desc string
+  local function set(key, rhs, desc)
+    local lhs = config[key]
+    if not lhs or lhs == "" then
+      return
+    end
     vim.keymap.set("n", lhs, rhs, {
       buffer = bufnr,
       noremap = true,
@@ -35,31 +76,31 @@ local function set_buffer_keymaps(bufnr)
     table.insert(mapped, lhs)
   end
 
-  set("i", function()
+  set("add_comment", function()
     comments.add_at_cursor()
   end, "Add comment")
-  set("F", function()
+  set("file_comment", function()
     comments.file_comment()
   end, "File comment")
-  set("e", function()
+  set("edit_comment", function()
     comments.edit_at_cursor()
   end, "Edit comment")
-  set("d", function()
+  set("delete_comment", function()
     comments.delete_at_cursor()
   end, "Delete comment")
-  set("c", function()
+  set("list_comments", function()
     comments.list()
   end, "List comments")
-  set("]n", function()
+  set("next_comment", function()
     comments.goto_next()
   end, "Next comment")
-  set("[n", function()
+  set("prev_comment", function()
     comments.goto_prev()
   end, "Previous comment")
-  set("S", function()
+  set("send_comments", function()
     send.to_sidekick()
   end, "Send comments to sidekick")
-  set("q", function()
+  set("close_review", function()
     require("reviewer").close()
   end, "Close review")
 

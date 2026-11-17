@@ -8,33 +8,6 @@ local current_tabpage = nil
 local buf_augroup = nil
 ---@type table<number, boolean> tabpages whose modified pane was already focused once
 local focused = {}
----@type table<number, {modifiable: boolean, readonly: boolean}>
-local saved_buf_options = {}
-
----@param bufnr number|nil
-local function make_readonly(bufnr)
-  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
-    return
-  end
-  if not saved_buf_options[bufnr] then
-    saved_buf_options[bufnr] = {
-      modifiable = vim.api.nvim_get_option_value("modifiable", { buf = bufnr }),
-      readonly = vim.api.nvim_get_option_value("readonly", { buf = bufnr }),
-    }
-  end
-  vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
-  vim.api.nvim_set_option_value("readonly", true, { buf = bufnr })
-end
-
-function M.restore_buffer_options()
-  for bufnr, opts in pairs(saved_buf_options) do
-    if vim.api.nvim_buf_is_valid(bufnr) then
-      vim.api.nvim_set_option_value("modifiable", opts.modifiable, { buf = bufnr })
-      vim.api.nvim_set_option_value("readonly", opts.readonly, { buf = bufnr })
-    end
-  end
-  saved_buf_options = {}
-end
 
 ---Normalize a codediff path value to a plain string. codediff returns a Path
 ---table ({ relative, absolute }); older versions return strings.
@@ -95,7 +68,7 @@ local function get_lifecycle()
   return ok and lifecycle or nil
 end
 
----Apply syntax highlighting and readonly options to a session's two panes.
+---Apply syntax highlighting to a session's two panes. Buffers stay editable.
 ---@param lifecycle table
 ---@param tabpage number
 local function prepare_buffers(lifecycle, tabpage)
@@ -103,8 +76,6 @@ local function prepare_buffers(lifecycle, tabpage)
   local raw_orig, raw_mod = lifecycle.get_paths(tabpage)
   set_buffer_filetype(orig_buf, raw_orig)
   set_buffer_filetype(mod_buf, raw_mod)
-  make_readonly(orig_buf)
-  make_readonly(mod_buf)
 end
 
 ---@param path string|table|nil
@@ -271,7 +242,6 @@ function M.on_session_closed()
     focused[current_tabpage] = nil
   end
   current_tabpage = nil
-  M.restore_buffer_options()
   if buf_augroup then
     pcall(vim.api.nvim_del_augroup_by_id, buf_augroup)
     buf_augroup = nil

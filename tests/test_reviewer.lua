@@ -84,6 +84,47 @@ local function main()
   send.to_sidekick()
   eq(sent_opts.name, "claude", "setup forwards sidekick.tool")
 
+  -- Keymap options override defaults, keep unset defaults, and `false`
+  -- disables an action. Stub the codediff lifecycle the keymapper reads.
+  local keymaps = require("reviewer.keymaps")
+  local km_buf = vim.api.nvim_create_buf(false, true)
+  package.preload["codediff.ui.lifecycle"] = function()
+    return {
+      get_buffers = function()
+        return km_buf, km_buf
+      end,
+    }
+  end
+
+  keymaps.setup({ add_comment = "gC", next_comment = false })
+  keymaps.setup_keymaps(0)
+  local function has_map(lhs)
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(km_buf, "n")) do
+      if m.lhs == lhs then
+        return true
+      end
+    end
+    return false
+  end
+
+  eq(has_map("gC"), true, "custom key is buffer-local")
+  eq(has_map("]n"), false, "disabled key is not mapped")
+  eq(has_map("[n"), true, "unset key keeps its default")
+
+  keymaps.setup({})
+  keymaps.setup_keymaps(0)
+  eq(has_map("gC"), false, "reset drops the custom key")
+  eq(has_map("]n"), true, "reset restores the default key")
+  eq(has_map((vim.g.maplocalleader or "\\") .. "i"), true, "default add_comment uses localleader")
+
+  keymaps.setup({ edit_comment = "" })
+  keymaps.setup_keymaps(0)
+  eq(has_map((vim.g.maplocalleader or "\\") .. "e"), false, "empty key is not mapped")
+
+  keymaps.cleanup()
+  package.loaded["codediff.ui.lifecycle"] = nil
+  package.preload["codediff.ui.lifecycle"] = nil
+
   -- A failing send must keep the comments.
   store.add("src/a.lua", 5, "keep me")
   package.loaded["sidekick.cli"] = {

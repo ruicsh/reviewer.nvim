@@ -50,15 +50,28 @@ Load the plugin before you open codediff (VeryLazy or lazy = false). The keys
 are buffer-local to the codediff panes. reviewer.nvim follows the current
 codediff tab: keys, marks, and comments apply to the active tab's session.
 
-sidekick.nvim is optional and loaded on demand: it is only required when you
-press `S`. The `optional = true` entry lets lazy.nvim load it when `S` requires
-it without force-loading it at startup.
+sidekick.nvim is optional and loaded on demand: it is only required when
+sending comments. The `optional = true` entry lets lazy.nvim load it when
+sending without force-loading it at startup.
 
 Options: >lua
   opts = {
     sidekick = {
       -- sidekick tool that receives the comments; nil = sidekick's current tool
       tool = "copilot",
+    },
+    -- Keys are buffer-local to the codediff panes. Omit a key to keep its
+    -- default; set it to false to disable that action.
+    keys = {
+      add_comment = "<localleader>i",
+      file_comment = "<localleader>F",
+      edit_comment = "<localleader>e",
+      delete_comment = "<localleader>d",
+      list_comments = "<localleader>c",
+      next_comment = "]n",
+      prev_comment = "[n",
+      send_comments = "<localleader>S",
+      close_review = "<localleader>q",
     },
   }
 <
@@ -67,16 +80,24 @@ Options: >lua
 4. KEYMAPS                                              *reviewer-keymaps*
 
 In a codediff diff: >text
-  i        Add a comment at the cursor line
-  F        Add or edit a file-level comment
-  e        Edit the comment at the cursor
-  d        Delete the comment at the cursor
-  c        List all comments and jump to one
-  ]n       Next comment
-  [n       Previous comment
-  S        Send all comments to sidekick, then clear them
-  q        Clear comments and close the review tab
+  <localleader>i   Add a comment at the cursor line           key: add_comment
+  <localleader>F   Add or edit a file-level comment           key: file_comment
+  <localleader>e   Edit the comment at the cursor             key: edit_comment
+  <localleader>d   Delete the comment at the cursor           key: delete_comment
+  <localleader>c   List all comments and jump to one          key: list_comments
+  ]n               Next comment                               key: next_comment
+  [n               Previous comment                           key: prev_comment
+  <localleader>S   Send all comments to sidekick, then clear  key: send_comments
+  <localleader>q   Clear comments and close the review tab    key: close_review
 <
+Set a `key` option to `false` to disable that action.
+The diff buffers stay editable: no key the plugin sets shadows a normal Vim
+editing key, so you can fix the file in the codediff pane.
+
+`<localleader>` is resolved when the keys are installed, that is when a
+codediff session opens, so set `vim.g.maplocalleader` before you open
+codediff.
+
 Comment popup: |<C-s>| submits, |<Esc>| or |q| cancels.
 
 ================================================================================
@@ -89,7 +110,7 @@ never show on another.
 ================================================================================
 6. SENDING TO SIDEKICK                                    *reviewer-send*
 
-|S| sends a markdown list, one line per comment: >text
+|<localleader>S| sends a markdown list, one line per comment: >text
   Code review comments on the current diff (`file:line`, `~` = old side).
 
   1. `src/api.ts:23` - endpoint does not handle errors
