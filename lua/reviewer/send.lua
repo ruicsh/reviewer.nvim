@@ -29,8 +29,19 @@ function M.generate_markdown()
     return nil
   end
 
+  -- Explain `~` only when an old-side comment is present: inline diffs cannot
+  -- produce one, and the clause is noise there.
+  local has_old = false
+  for _, comment in ipairs(all) do
+    if (comment.side or "new") == "old" then
+      has_old = true
+      break
+    end
+  end
+
   local lines = {
-    "Code review comments on the current diff (`file:line` or `file:start-end`, `~` = old side).",
+    has_old and "Code review comments on the current diff (`file:line` or `file:start-end`, `~` = old side)."
+      or "Code review comments on the current diff (`file:line` or `file:start-end`).",
     "",
   }
   for i, comment in ipairs(all) do

@@ -38,6 +38,7 @@ local function main()
   eq(store.count(), 0, "fresh store")
 
   store.add("src/a.lua", 3, "line one\nsecond line", "new")
+  assert(not send.generate_markdown():find("`~`", 1, true), "no old-side clause without old-side comments")
   store.add("src/a.lua", 7, "old impl", "old")
   store.add("src/b.lua", 0, "file note")
   eq(store.count(), 3, "count after add")

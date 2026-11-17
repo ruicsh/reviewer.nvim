@@ -98,7 +98,7 @@ Code review comments on the current diff (`file:line` or `file:start-end`, `~` =
 4. `src/db.ts:8-19` - this block duplicates the retry logic
 ```
 
-A `~` before the line number marks the old (left) side of the diff. A bare path is a file-level comment. `start-end` is a multi-line comment, sent as one line. Multi-line comments are flattened to one line. After sending, all comments and their inline marks are removed.
+A `~` before the line number marks the old (left) side of the diff; the header only mentions it when such a comment is present. Inline diffs never produce one, since the original pane is not shown. A bare path is a file-level comment. `start-end` is a multi-line comment, sent as one line. Multi-line comments are flattened to one line. After sending, all comments and their inline marks are removed.
 
 ## Tests
 
