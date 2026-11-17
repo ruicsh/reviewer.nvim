@@ -93,6 +93,7 @@ local function main()
       get_buffers = function()
         return km_buf, km_buf
       end,
+      get_windows = function() end,
     }
   end
 
@@ -124,6 +125,76 @@ local function main()
   keymaps.cleanup()
   package.loaded["codediff.ui.lifecycle"] = nil
   package.preload["codediff.ui.lifecycle"] = nil
+
+  -- Cursor position: window matching plus the virtual-buffer / inline fallback.
+  local hooks = require("reviewer.hooks")
+  local cur_win = vim.api.nvim_get_current_win()
+  local cur_buf = vim.api.nvim_get_current_buf()
+  local buf_lines = {}
+  for i = 1, 10 do
+    buf_lines[i] = "line " .. i
+  end
+  vim.api.nvim_buf_set_lines(cur_buf, 0, -1, false, buf_lines)
+  vim.api.nvim_buf_set_name(cur_buf, "codediff:///repo///HEAD/foo.lua")
+  vim.api.nvim_win_set_cursor(cur_win, { 7, 0 })
+
+  local hk = {
+    get_session = function()
+      return { modified_win = cur_win }
+    end,
+    get_buffers = function()
+      return cur_buf, cur_buf
+    end,
+    get_paths = function()
+      return nil, nil
+    end,
+    get_windows = function()
+      return nil, cur_win
+    end,
+    get_git_context = function()
+      return { git_root = "/repo" }
+    end,
+  }
+  package.loaded["codediff.ui.lifecycle"] = hk
+  package.preload["codediff.core.virtual_file"] = function()
+    return {
+      parse_url = function()
+        return "/repo", "HEAD", "foo.lua"
+      end,
+    }
+  end
+
+  -- Inline open: paths are empty, so the path comes from the buffer name.
+  hooks.on_file_changed(vim.api.nvim_get_current_tabpage())
+  local file, line, side = hooks.get_cursor_position()
+  eq(file, "foo.lua", "virtual buffer path resolved from the buffer name")
+  eq(line, 7, "cursor position reports the cursor line")
+  eq(side, "new", "modified window reports the new side")
+
+  -- Same virtual path, but the cursor sits in the original window.
+  hk.get_windows = function()
+    return cur_win, nil
+  end
+  file, line, side = hooks.get_cursor_position()
+  eq(file, "foo.lua", "original pane resolves the same path")
+  eq(line, 7, "cursor line holds on the original side")
+  eq(side, "old", "original window reports the old side")
+
+  -- A real path from get_paths wins over the buffer-name fallback.
+  hk.get_windows = function()
+    return nil, cur_win
+  end
+  hk.get_paths = function()
+    return nil, { absolute = "/repo/bar.lua" }
+  end
+  file, line, side = hooks.get_cursor_position()
+  eq(file, "bar.lua", "lifecycle path wins when present")
+  eq(line, 7, "cursor line holds with a real path")
+  eq(side, "new", "real path on the modified side")
+
+  package.loaded["codediff.core.virtual_file"] = nil
+  package.preload["codediff.core.virtual_file"] = nil
+  package.loaded["codediff.ui.lifecycle"] = nil
 
   -- A failing send must keep the comments.
   store.add("src/a.lua", 5, "keep me")

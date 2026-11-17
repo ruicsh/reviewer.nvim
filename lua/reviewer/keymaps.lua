@@ -5,8 +5,6 @@ local send = require("reviewer.send")
 
 ---@type table<number, string[]>
 local keymapped = {}
----@type number|nil
-local augroup = nil
 
 ---@param bufnr number
 local function clear_buffer(bufnr)
@@ -107,6 +105,14 @@ local function set_buffer_keymaps(bufnr)
   keymapped[bufnr] = mapped
 end
 
+---@param bufnr number
+---@return boolean
+function M.is_attached(bufnr)
+  return keymapped[bufnr] ~= nil
+end
+
+-- Map both panes of a session. codediff replaces pane buffers on file switch,
+-- so callers re-run this whenever a new pane buffer shows up.
 ---@param tabpage number
 function M.setup_keymaps(tabpage)
   local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
@@ -114,51 +120,29 @@ function M.setup_keymaps(tabpage)
     return
   end
 
-  if augroup then
-    pcall(vim.api.nvim_del_augroup_by_id, augroup)
-  end
-  augroup = vim.api.nvim_create_augroup("reviewer_keymaps", { clear = true })
-
   for bufnr in pairs(keymapped) do
     clear_buffer(bufnr)
   end
   keymapped = {}
 
+  -- Inline layout shows only the modified buffer, and the lifecycle can lag
+  -- behind the windows, so map whatever the session windows display too.
   local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
-  for _, bufnr in ipairs({ orig_buf, mod_buf }) do
-    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+  local bufs = { orig_buf, mod_buf }
+  local orig_win, mod_win = lifecycle.get_windows(tabpage)
+  for _, win in ipairs({ orig_win or false, mod_win or false }) do
+    if win and vim.api.nvim_win_is_valid(win) then
+      table.insert(bufs, vim.api.nvim_win_get_buf(win))
+    end
+  end
+  for _, bufnr in ipairs(bufs) do
+    if bufnr and vim.api.nvim_buf_is_valid(bufnr) and not keymapped[bufnr] then
       set_buffer_keymaps(bufnr)
     end
   end
-
-  vim.api.nvim_create_autocmd("BufEnter", {
-    group = augroup,
-    callback = function()
-      if vim.api.nvim_get_current_tabpage() ~= tabpage then
-        return
-      end
-      -- Skip floating windows (the comment popup).
-      if vim.api.nvim_win_get_config(0).relative ~= "" then
-        return
-      end
-      if not lifecycle.get_session(tabpage) then
-        return
-      end
-      local bufnr = vim.api.nvim_get_current_buf()
-      local ob, mb = lifecycle.get_buffers(tabpage)
-      if bufnr ~= ob and bufnr ~= mb then
-        return
-      end
-      set_buffer_keymaps(bufnr)
-    end,
-  })
 end
 
 function M.cleanup()
-  if augroup then
-    pcall(vim.api.nvim_del_augroup_by_id, augroup)
-    augroup = nil
-  end
   for bufnr in pairs(keymapped) do
     clear_buffer(bufnr)
   end

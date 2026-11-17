@@ -11,12 +11,18 @@ local initialized = false
 ---Attach reviewer to codediff sessions.
 ---@param opts? { sidekick?: { tool?: string }, keys?: ReviewerKeys } `sidekick.tool` is the sidekick tool that receives sent comments; nil keeps sidekick's current tool. `keys` overrides the buffer-local keymaps.
 function M.setup(opts)
-  if initialized then
+  -- plugin/reviewer.lua calls setup() with no opts after the user's config has
+  -- already called setup(opts); skip it so the user's config is not reset.
+  if opts == nil and initialized then
     return
   end
 
   send.setup(opts and opts.sidekick)
   keymaps.setup(opts and opts.keys)
+
+  if initialized then
+    return
+  end
 
   vim.api.nvim_set_hl(0, "ReviewerComment", { link = "Comment", default = true })
 
@@ -45,6 +51,28 @@ function M.setup(opts)
     end,
   })
 
+  -- The deferred checks above can run before codediff finishes building or
+  -- swapping its panes. Entering an unattached pane retries the attach.
+  -- Guarded to codediff tabs so it does not schedule work for every buffer.
+  vim.api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
+    group = augroup,
+    callback = function()
+      local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+      if not ok or not lifecycle.get_session(vim.api.nvim_get_current_tabpage()) then
+        return
+      end
+      vim.schedule(M._on_buf_enter)
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("User", {
+    group = augroup,
+    pattern = "CodeDiffVirtualFileLoaded",
+    callback = function()
+      vim.schedule(M._on_buf_enter)
+    end,
+  })
+
   vim.api.nvim_create_autocmd("TabClosed", {
     group = augroup,
     callback = function()
@@ -69,6 +97,21 @@ function M._check_session()
   store.load()
   hooks.on_session_created(tabpage)
   keymaps.setup_keymaps(tabpage)
+end
+
+---Attach when a session window shows a buffer that has no keymaps yet.
+function M._on_buf_enter()
+  local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+  if not ok then
+    return
+  end
+  local orig_win, mod_win = lifecycle.get_windows(vim.api.nvim_get_current_tabpage())
+  for _, win in ipairs({ orig_win or false, mod_win or false }) do
+    if win and vim.api.nvim_win_is_valid(win) and not keymaps.is_attached(vim.api.nvim_win_get_buf(win)) then
+      M._check_session()
+      return
+    end
+  end
 end
 
 function M._on_file_select()

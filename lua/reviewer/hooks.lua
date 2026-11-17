@@ -68,6 +68,23 @@ local function get_lifecycle()
   return ok and lifecycle or nil
 end
 
+---Absolute path of the file a pane buffer shows, for codediff virtual buffers too.
+---@param bufnr number
+---@return string|nil
+local function buffer_path(bufnr)
+  local name = vim.api.nvim_buf_get_name(bufnr)
+  if name:find("^codediff://") then
+    local ok, vf = pcall(require, "codediff.core.virtual_file")
+    if ok then
+      local git_root, _, filepath = vf.parse_url(name)
+      if git_root and filepath then
+        return git_root .. "/" .. filepath
+      end
+    end
+  end
+  return name ~= "" and name or nil
+end
+
 ---Apply syntax highlighting to a session's two panes. Buffers stay editable.
 ---@param lifecycle table
 ---@param tabpage number
@@ -88,8 +105,11 @@ local function relativize(path)
   local lifecycle = get_lifecycle()
   local git_ctx = lifecycle and current_tabpage and lifecycle.get_git_context(current_tabpage)
   if git_ctx and git_ctx.git_root then
-    local abs = vim.fn.fnamemodify(path, ":p")
-    return normalize_path(abs:gsub("^" .. vim.pesc(git_ctx.git_root) .. "/", ""))
+    -- Compare forward-slash paths: buffer_path builds them from codediff URLs,
+    -- while git_root carries the platform separator (backslash on Windows).
+    local abs = vim.fn.fnamemodify(path, ":p"):gsub("\\", "/")
+    local root = git_ctx.git_root:gsub("\\", "/")
+    return normalize_path(abs:gsub("^" .. vim.pesc(root) .. "/", ""))
   end
   return normalize_path(vim.fn.fnamemodify(path, ":."))
 end
@@ -146,23 +166,26 @@ function M.get_cursor_position()
   end
 
   local cursor = vim.api.nvim_win_get_cursor(0)
-  local current_buf = vim.api.nvim_get_current_buf()
+  local current_win = vim.api.nvim_get_current_win()
   local orig_path, mod_path = lifecycle.get_paths(current_tabpage)
-  local orig_buf, mod_buf = lifecycle.get_buffers(current_tabpage)
+  local orig_win, mod_win = lifecycle.get_windows(current_tabpage)
 
+  -- Match by window: the lifecycle's buffer ids lag behind codediff's pane swaps.
   local file_path, side
-  if current_buf == orig_buf then
-    file_path, side = orig_path, "old"
-  elseif current_buf == mod_buf then
+  if current_win == mod_win then
     file_path, side = mod_path, "new"
+  elseif current_win == orig_win then
+    file_path, side = orig_path, "old"
   else
     return nil, nil, nil
   end
 
-  if not file_path then
+  -- Inline open leaves codediff's paths empty until a file is selected.
+  local path = to_path_string(file_path) or buffer_path(vim.api.nvim_get_current_buf())
+  if not path then
     return nil, nil, nil
   end
-  return relativize(file_path), cursor[1], side
+  return relativize(path), cursor[1], side
 end
 
 ---@param lifecycle table
@@ -179,6 +202,7 @@ end
 
 ---@param tabpage number
 function M.on_session_created(tabpage)
+  local same_session = current_tabpage == tabpage
   current_tabpage = tabpage
 
   local lifecycle = get_lifecycle()
@@ -188,24 +212,28 @@ function M.on_session_created(tabpage)
 
   prepare_buffers(lifecycle, tabpage)
 
-  if buf_augroup then
-    pcall(vim.api.nvim_del_augroup_by_id, buf_augroup)
+  -- Rebuilding the augroup is only needed when the session changes; a retry
+  -- attach on the same tabpage must not tear down and recreate it.
+  if not same_session or not buf_augroup then
+    if buf_augroup then
+      pcall(vim.api.nvim_del_augroup_by_id, buf_augroup)
+    end
+    buf_augroup = vim.api.nvim_create_augroup("reviewer_buf_marks", { clear = true })
+    vim.api.nvim_create_autocmd("BufEnter", {
+      group = buf_augroup,
+      callback = function()
+        if vim.api.nvim_get_current_tabpage() ~= current_tabpage then
+          return
+        end
+        local bufnr = vim.api.nvim_get_current_buf()
+        local ob, mb = lifecycle.get_buffers(current_tabpage)
+        if bufnr ~= ob and bufnr ~= mb then
+          return
+        end
+        marks.refresh()
+      end,
+    })
   end
-  buf_augroup = vim.api.nvim_create_augroup("reviewer_buf_marks", { clear = true })
-  vim.api.nvim_create_autocmd("BufEnter", {
-    group = buf_augroup,
-    callback = function()
-      if vim.api.nvim_get_current_tabpage() ~= current_tabpage then
-        return
-      end
-      local bufnr = vim.api.nvim_get_current_buf()
-      local ob, mb = lifecycle.get_buffers(current_tabpage)
-      if bufnr ~= ob and bufnr ~= mb then
-        return
-      end
-      marks.refresh()
-    end,
-  })
 
   vim.defer_fn(function()
     marks.refresh()
