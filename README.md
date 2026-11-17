@@ -17,6 +17,7 @@ With lazy.nvim:
   "you/reviewer.nvim",
   dependencies = {
     "esmuellert/codediff.nvim",
+    { "folke/sidekick.nvim", optional = true },
   },
   event = "VeryLazy",
   opts = {},
@@ -24,6 +25,8 @@ With lazy.nvim:
 ```
 
 Load the plugin before you open codediff (`VeryLazy` or `lazy = false`). The keys are buffer-local to the codediff panes, so they only work once the plugin is loaded. reviewer.nvim follows the current codediff tab: keys, marks, and comments apply to the active tab's session.
+
+sidekick.nvim is optional and loaded on demand: it is only required when you press `S`. The `optional = true` entry lets lazy.nvim load it when `S` requires it without force-loading it at startup.
 
 ## Keys (in a codediff diff)
 
