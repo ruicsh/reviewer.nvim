@@ -30,7 +30,7 @@ end
 
 ---@type ReviewerKeys
 local defaults = {
-  add_comment = "<localleader>i",
+  add_comment = "<localleader>a",
   file_comment = "<localleader>F",
   edit_comment = "<localleader>e",
   delete_comment = "<localleader>d",

@@ -39,7 +39,7 @@ opts = {
   -- Keys are buffer-local to the codediff panes. Omit a key to keep its
   -- default; set it to false to disable that action.
   keys = {
-    add_comment = "<localleader>i",
+    add_comment = "<localleader>a",
     file_comment = "<localleader>F",
     edit_comment = "<localleader>e",
     delete_comment = "<localleader>d",
@@ -56,7 +56,7 @@ opts = {
 
 | Key              | Option           | Action                                         |
 | ---------------- | ---------------- | ---------------------------------------------- |
-| `<localleader>i` | `add_comment`    | Add a comment at the cursor line               |
+| `<localleader>a` | `add_comment`    | Add a comment at the cursor line               |
 | `<localleader>F` | `file_comment`   | Add or edit a file-level comment               |
 | `<localleader>e` | `edit_comment`   | Edit the comment at the cursor                 |
 | `<localleader>d` | `delete_comment` | Delete the comment at the cursor               |

@@ -63,7 +63,7 @@ Options: >lua
     -- Keys are buffer-local to the codediff panes. Omit a key to keep its
     -- default; set it to false to disable that action.
     keys = {
-      add_comment = "<localleader>i",
+      add_comment = "<localleader>a",
       file_comment = "<localleader>F",
       edit_comment = "<localleader>e",
       delete_comment = "<localleader>d",
@@ -80,7 +80,7 @@ Options: >lua
 4. KEYMAPS                                              *reviewer-keymaps*
 
 In a codediff diff: >text
-  <localleader>i   Add a comment at the cursor line           key: add_comment
+  <localleader>a   Add a comment at the cursor line           key: add_comment
   <localleader>F   Add or edit a file-level comment           key: file_comment
   <localleader>e   Edit the comment at the cursor             key: edit_comment
   <localleader>d   Delete the comment at the cursor           key: delete_comment

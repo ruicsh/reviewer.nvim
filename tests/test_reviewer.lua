@@ -116,7 +116,7 @@ local function main()
   keymaps.setup_keymaps(0)
   eq(has_map("gC"), false, "reset drops the custom key")
   eq(has_map("]n"), true, "reset restores the default key")
-  eq(has_map((vim.g.maplocalleader or "\\") .. "i"), true, "default add_comment uses localleader")
+  eq(has_map((vim.g.maplocalleader or "\\") .. "a"), true, "default add_comment uses localleader")
 
   keymaps.setup({ edit_comment = "" })
   keymaps.setup_keymaps(0)
