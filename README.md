@@ -14,7 +14,7 @@ With lazy.nvim:
 
 ```lua
 {
-  "you/reviewer.nvim",
+  "ruicsh/reviewer.nvim",
   dependencies = {
     "esmuellert/codediff.nvim",
     { "folke/sidekick.nvim", optional = true },
@@ -54,17 +54,17 @@ opts = {
 
 ## Keys (in a codediff diff)
 
-| Key                | Option           | Action                                         |
-| ------------------ | ---------------- | ---------------------------------------------- |
-| `<localleader>i`   | `add_comment`    | Add a comment at the cursor line               |
-| `<localleader>F`   | `file_comment`   | Add or edit a file-level comment               |
-| `<localleader>e`   | `edit_comment`   | Edit the comment at the cursor                 |
-| `<localleader>d`   | `delete_comment` | Delete the comment at the cursor               |
-| `<localleader>c`   | `list_comments`  | List all comments and jump to one              |
-| `]n`               | `next_comment`   | Next comment                                   |
-| `[n`               | `prev_comment`   | Previous comment                               |
-| `<localleader>S`   | `send_comments`  | Send all comments to sidekick, then clear them |
-| `<localleader>q`   | `close_review`   | Clear comments and close the review tab        |
+| Key              | Option           | Action                                         |
+| ---------------- | ---------------- | ---------------------------------------------- |
+| `<localleader>i` | `add_comment`    | Add a comment at the cursor line               |
+| `<localleader>F` | `file_comment`   | Add or edit a file-level comment               |
+| `<localleader>e` | `edit_comment`   | Edit the comment at the cursor                 |
+| `<localleader>d` | `delete_comment` | Delete the comment at the cursor               |
+| `<localleader>c` | `list_comments`  | List all comments and jump to one              |
+| `]n`             | `next_comment`   | Next comment                                   |
+| `[n`             | `prev_comment`   | Previous comment                               |
+| `<localleader>S` | `send_comments`  | Send all comments to sidekick, then clear them |
+| `<localleader>q` | `close_review`   | Clear comments and close the review tab        |
 
 The diff buffers stay editable: no key the plugin sets shadows a normal Vim
 editing key, so you can fix the file in the codediff pane.
