@@ -5,7 +5,8 @@ local data_dir = vim.fn.stdpath("data") .. "/reviewer"
 ---@class ReviewerComment
 ---@field id string
 ---@field file string repository-relative path
----@field line number 0 for a file-level comment
+---@field line number start line; 0 for a file-level comment
+---@field end_line? number last line of a multi-line comment; nil for a single line
 ---@field side "old"|"new"
 ---@field text string
 
@@ -151,14 +152,16 @@ end
 ---@param line number
 ---@param text string
 ---@param side? "old"|"new"
+---@param end_line? number last line of a multi-line comment; nil for a single line
 ---@return ReviewerComment
-function M.add(file, line, text, side)
+function M.add(file, line, text, side, end_line)
   M.comments[file] = M.comments[file] or {}
   id_counter = id_counter + 1
   local comment = {
     id = string.format("c_%d_%d", os.time(), id_counter),
     file = file,
     line = line,
+    end_line = end_line and end_line > line and end_line or nil,
     side = side or "new",
     text = text,
   }
@@ -192,13 +195,19 @@ function M.get_file_comment(file)
   return nil
 end
 
+---Comment covering `line`, a multi-line comment included. That makes edit and
+---delete work on any line of the range.
 ---@param file string
 ---@param line number
 ---@param side? "old"|"new"
 ---@return ReviewerComment|nil
 function M.get_at_line(file, line, side)
   for _, comment in ipairs(M.comments[file] or {}) do
-    if comment.line == line and (comment.side or "new") == (side or "new") then
+    if
+      (comment.side or "new") == (side or "new")
+      and line >= comment.line
+      and line <= (comment.end_line or comment.line)
+    then
       return comment
     end
   end

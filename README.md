@@ -56,7 +56,7 @@ opts = {
 
 | Key              | Option           | Action                                         |
 | ---------------- | ---------------- | ---------------------------------------------- |
-| `<localleader>a` | `add_comment`    | Add a comment at the cursor line               |
+| `<localleader>a` | `add_comment`    | Add a comment at the cursor line, or on the visual selection |
 | `<localleader>F` | `file_comment`   | Add or edit a file-level comment               |
 | `<localleader>e` | `edit_comment`   | Edit the comment at the cursor                 |
 | `<localleader>d` | `delete_comment` | Delete the comment at the cursor               |
@@ -68,6 +68,13 @@ opts = {
 
 The diff buffers stay editable: no key the plugin sets shadows a normal Vim
 editing key, so you can fix the file in the codediff pane.
+
+`add_comment` works in visual mode too: select lines, then press
+`<localleader>a` to comment on the whole range. Ranges are line-based, so a
+character-wise selection comments every line it touches. The comment box sits
+under the last selected line and the range is highlighted with `ReviewerRange`
+(linked to `Visual` by default). Edit and delete find a range comment from any
+line it covers.
 
 `<localleader>` is resolved when the keys are installed, that is when a
 codediff session opens, so set `vim.g.maplocalleader` before you open codediff.
@@ -83,14 +90,15 @@ One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo
 `<localleader>S` sends a markdown list, one line per comment:
 
 ```
-Code review comments on the current diff (`file:line`, `~` = old side).
+Code review comments on the current diff (`file:line` or `file:start-end`, `~` = old side).
 
 1. `src/api.ts:23` - endpoint does not handle errors
 2. `src/utils.ts:~10` - old implementation was cleaner
 3. `src/api.ts` - whole file needs a pass
+4. `src/db.ts:8-19` - this block duplicates the retry logic
 ```
 
-A `~` before the line number marks the old (left) side of the diff. A bare path is a file-level comment. Multi-line comments are flattened to one line. After sending, all comments and their inline marks are removed.
+A `~` before the line number marks the old (left) side of the diff. A bare path is a file-level comment. `start-end` is a multi-line comment, sent as one line. Multi-line comments are flattened to one line. After sending, all comments and their inline marks are removed.
 
 ## Tests
 

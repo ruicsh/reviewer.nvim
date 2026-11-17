@@ -59,13 +59,32 @@ function M.render_for_buffer(bufnr, side, file)
       end
     else
       local row = comment.line - 1
-      if row >= 0 and row < line_count then
-        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, 0, {
-          sign_text = "●",
-          sign_hl_group = "ReviewerComment",
-          virt_lines = virt_lines,
-          virt_lines_above = false,
-        })
+      local last_row = math.min((comment.end_line or comment.line) - 1, line_count - 1)
+      if row >= 0 and row < line_count and last_row >= row then
+        if last_row > row then
+          -- Cover the whole range, last line included: an end row of 0 with
+          -- hl_eol stops at the start of `end_row`, and `line_count` is the
+          -- largest accepted value.
+          pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, 0, {
+            end_row = math.min(last_row + 1, line_count),
+            end_col = 0,
+            hl_group = "ReviewerRange",
+            hl_eol = true,
+          })
+        end
+        -- Sign on the first line, comment box under the last one.
+        local sign = { sign_text = "●", sign_hl_group = "ReviewerComment" }
+        if last_row == row then
+          sign.virt_lines = virt_lines
+          sign.virt_lines_above = false
+          pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, 0, sign)
+        else
+          pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, 0, sign)
+          pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, last_row, 0, {
+            virt_lines = virt_lines,
+            virt_lines_above = false,
+          })
+        end
       end
     end
   end

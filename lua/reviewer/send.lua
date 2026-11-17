@@ -30,7 +30,7 @@ function M.generate_markdown()
   end
 
   local lines = {
-    "Code review comments on the current diff (`file:line`, `~` = old side).",
+    "Code review comments on the current diff (`file:line` or `file:start-end`, `~` = old side).",
     "",
   }
   for i, comment in ipairs(all) do

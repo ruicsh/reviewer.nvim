@@ -11,7 +11,9 @@ local function clear_buffer(bufnr)
   local keys = keymapped[bufnr]
   if keys and vim.api.nvim_buf_is_valid(bufnr) then
     for _, lhs in ipairs(keys) do
-      pcall(vim.keymap.del, "n", lhs, { buffer = bufnr })
+      for _, mode in ipairs({ "n", "x" }) do
+        pcall(vim.keymap.del, mode, lhs, { buffer = bufnr })
+      end
     end
   end
   keymapped[bufnr] = nil
@@ -59,12 +61,13 @@ local function set_buffer_keymaps(bufnr)
   ---@param key string config field
   ---@param rhs function
   ---@param desc string
-  local function set(key, rhs, desc)
+  ---@param mode? string|string[] defaults to normal mode
+  local function set(key, rhs, desc, mode)
     local lhs = config[key]
     if not lhs or lhs == "" then
       return
     end
-    vim.keymap.set("n", lhs, rhs, {
+    vim.keymap.set(mode or "n", lhs, rhs, {
       buffer = bufnr,
       noremap = true,
       silent = true,
@@ -77,6 +80,10 @@ local function set_buffer_keymaps(bufnr)
   set("add_comment", function()
     comments.add_at_cursor()
   end, "Add comment")
+  -- In visual mode the same key comments on the selected lines.
+  set("add_comment", function()
+    comments.add_range()
+  end, "Add comment on range", "x")
   set("file_comment", function()
     comments.file_comment()
   end, "File comment")

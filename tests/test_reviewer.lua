@@ -3,6 +3,7 @@ vim.opt.rtp:append(vim.fn.getcwd())
 
 local store = require("reviewer.store")
 local send = require("reviewer.send")
+local location = require("reviewer.location")
 
 local function eq(actual, expected, msg)
   assert(actual == expected, string.format("%s: expected %s, got %s", msg, tostring(expected), tostring(actual)))
@@ -53,6 +54,44 @@ local function main()
   assert(md:find("line one second line", 1, true), "newlines should flatten to a space")
   assert(not md:find("\nsecond line", 1, true), "comment text must stay on one line")
 
+  -- Multi-line comments cover every selected line and format as start-end.
+  local range = store.add("src/a.lua", 10, "spans lines", "new", 14)
+  eq(range.end_line, 14, "range keeps its last line")
+  eq(store.add("src/a.lua", 20, "single", "new", 20).end_line, nil, "one-line selection is a plain comment")
+  eq(store.get_at_line("src/a.lua", 12, "new").text, "spans lines", "range matches a line inside it")
+  eq(store.get_at_line("src/a.lua", 15, "new"), nil, "range does not match the line after it")
+  eq(location.format(range), "src/a.lua:10-14", "range location")
+  eq(location.format({ file = "f", line = 10, end_line = 14, side = "old" }), "f:~10-14", "old-side range location")
+  local range_md = send.generate_markdown()
+  assert(range_md:find("src/a.lua:10-14", 1, true), "range location in the payload")
+
+  -- Range marks: sign on the first line, box under the last, highlight between.
+  local marks = require("reviewer.marks")
+  local marks_buf = vim.api.nvim_create_buf(false, true)
+  local marks_lines = {}
+  for i = 1, 25 do
+    marks_lines[i] = "line " .. i
+  end
+  vim.api.nvim_buf_set_lines(marks_buf, 0, -1, false, marks_lines)
+  marks.render_for_buffer(marks_buf, "new", "src/a.lua")
+  local ns = vim.api.nvim_create_namespace("reviewer")
+  local sign_found, box_found, highlight_found = false, false, false
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(marks_buf, ns, 0, -1, { details = true })) do
+    local row, details = mark[2], mark[4]
+    if row == 9 and details.sign_text then
+      sign_found = true
+    end
+    if row == 13 and details.virt_lines then
+      box_found = true
+    end
+    if row == 9 and details.end_row == 14 and details.hl_group == "ReviewerRange" then
+      highlight_found = true
+    end
+  end
+  eq(sign_found, true, "range sign on the first line")
+  eq(box_found, true, "comment box under the last line")
+  eq(highlight_found, true, "range highlight covers the selected lines")
+
   local files = vim.fn.glob(vim.fn.stdpath("data") .. "/reviewer/*feature-x.json", false, true)
   eq(#files, 1, "one branch-scoped store file")
 
@@ -100,8 +139,8 @@ local function main()
 
   keymaps.setup({ add_comment = "gC", next_comment = false })
   keymaps.setup_keymaps(0)
-  local function has_map(lhs)
-    for _, m in ipairs(vim.api.nvim_buf_get_keymap(km_buf, "n")) do
+  local function has_map(lhs, mode)
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(km_buf, mode or "n")) do
       if m.lhs == lhs then
         return true
       end
@@ -110,6 +149,8 @@ local function main()
   end
 
   eq(has_map("gC"), true, "custom key is buffer-local")
+  eq(has_map("gC", "x"), true, "add_comment is also mapped in visual mode")
+  eq(has_map("]n", "x"), false, "other keys are not mapped in visual mode")
   eq(has_map("]n"), false, "disabled key is not mapped")
   eq(has_map("[n"), true, "unset key keeps its default")
 
@@ -126,6 +167,14 @@ local function main()
   keymaps.cleanup()
   package.loaded["codediff.ui.lifecycle"] = nil
   package.preload["codediff.ui.lifecycle"] = nil
+
+  -- Visual range is normalized whichever way the selection was made.
+  local comments = require("reviewer.comments")
+  vim.fn.setpos("'<", { 0, 12, 1, 0 })
+  vim.fn.setpos("'>", { 0, 8, 1, 0 })
+  local range_start, range_end = comments._visual_range()
+  eq(range_start, 8, "visual range starts at the lower line")
+  eq(range_end, 12, "visual range ends at the higher line")
 
   -- Cursor position: window matching plus the virtual-buffer / inline fallback.
   local hooks = require("reviewer.hooks")
@@ -192,6 +241,23 @@ local function main()
   eq(file, "bar.lua", "lifecycle path wins when present")
   eq(line, 7, "cursor line holds with a real path")
   eq(side, "new", "real path on the modified side")
+
+  -- Visual-mode add stores the selection as a range through the popup.
+  local popup = require("reviewer.popup")
+  local popup_open = popup.open
+  popup.open = function(_, callback)
+    callback("range note")
+  end
+  vim.fn.setpos("'<", { 0, 2, 1, 0 })
+  vim.fn.setpos("'>", { 0, 5, 1, 0 })
+  comments.add_range()
+  popup.open = popup_open
+  local ranged = store.get_at_line("bar.lua", 3, "new")
+  assert(ranged, "range comment not stored")
+  eq(ranged.line, 2, "range comment starts at the selection start")
+  eq(ranged.end_line, 5, "range comment ends at the selection end")
+  eq(location.format(ranged), "bar.lua:2-5", "range comment location")
+  store.delete(ranged.id)
 
   package.loaded["codediff.core.virtual_file"] = nil
   package.preload["codediff.core.virtual_file"] = nil

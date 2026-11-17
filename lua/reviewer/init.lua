@@ -25,6 +25,7 @@ function M.setup(opts)
   end
 
   vim.api.nvim_set_hl(0, "ReviewerComment", { link = "Comment", default = true })
+  vim.api.nvim_set_hl(0, "ReviewerRange", { link = "Visual", default = true })
 
   local augroup = vim.api.nvim_create_augroup("reviewer", { clear = true })
 

@@ -57,6 +57,57 @@ function M.add_at_cursor()
   end)
 end
 
+---First and last line of the visual selection. A Lua mapping in visual mode
+---runs before `'<`/`'>` are set, so read the selection marks instead.
+---@return number|nil start_line
+---@return number|nil end_line
+function M._visual_range()
+  if vim.fn.mode():find("^[vV\22]") then
+    local anchor, cursor = vim.fn.line("v"), vim.fn.line(".")
+    return math.min(anchor, cursor), math.max(anchor, cursor)
+  end
+  local start_line = vim.api.nvim_buf_get_mark(0, "<")[1]
+  local end_line = vim.api.nvim_buf_get_mark(0, ">")[1]
+  if start_line == 0 or end_line == 0 then
+    return nil, nil
+  end
+  return math.min(start_line, end_line), math.max(start_line, end_line)
+end
+
+---Comment on the visual selection, stored as its first and last line.
+function M.add_range()
+  local file, _, side = hooks.get_cursor_position()
+  if not file then
+    notify("Could not determine cursor position", vim.log.levels.WARN)
+    return
+  end
+
+  local start_line, end_line = M._visual_range()
+  if not start_line or not end_line then
+    notify("No line range selected", vim.log.levels.WARN)
+    return
+  end
+
+  for line = start_line, end_line do
+    if store.get_at_line(file, line, side) then
+      notify("Comment already exists in this range", vim.log.levels.WARN)
+      return
+    end
+  end
+
+  popup.open(nil, function(text)
+    if text then
+      store.add(file, start_line, text, side, end_line)
+      refresh_marks()
+      if end_line > start_line then
+        notify(string.format("Comment added on lines %d-%d", start_line, end_line), vim.log.levels.INFO)
+      else
+        notify("Comment added", vim.log.levels.INFO)
+      end
+    end
+  end)
+end
+
 function M.file_comment()
   local file = hooks.get_cursor_position()
   if not file then

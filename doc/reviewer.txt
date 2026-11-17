@@ -19,6 +19,7 @@ sidekick.nvim in one keystroke.
 
 Features:
 - Inline comments on diff lines, with a floating input popup
+- Multi-line comments on a visual selection
 - File-level comments
 - Comments stored per repository and branch
 - Send every comment to sidekick.nvim as markdown, then clear them
@@ -80,7 +81,7 @@ Options: >lua
 4. KEYMAPS                                              *reviewer-keymaps*
 
 In a codediff diff: >text
-  <localleader>a   Add a comment at the cursor line           key: add_comment
+  <localleader>a   Add a comment at the cursor or range        key: add_comment
   <localleader>F   Add or edit a file-level comment           key: file_comment
   <localleader>e   Edit the comment at the cursor             key: edit_comment
   <localleader>d   Delete the comment at the cursor           key: delete_comment
@@ -93,6 +94,13 @@ In a codediff diff: >text
 Set a `key` option to `false` to disable that action.
 The diff buffers stay editable: no key the plugin sets shadows a normal Vim
 editing key, so you can fix the file in the codediff pane.
+
+The `add_comment` key also works in visual mode: select lines, then press it to
+comment on the whole range. Ranges are line-based, so a character-wise
+selection comments every line it touches. The comment box sits under the last
+selected line and the range is highlighted with the `ReviewerRange` highlight
+group (linked to `Visual` by default). Edit and delete find a range comment
+from any line it covers.
 
 `<localleader>` is resolved when the keys are installed, that is when a
 codediff session opens, so set `vim.g.maplocalleader` before you open
@@ -111,14 +119,17 @@ never show on another.
 6. SENDING TO SIDEKICK                                    *reviewer-send*
 
 |<localleader>S| sends a markdown list, one line per comment: >text
-  Code review comments on the current diff (`file:line`, `~` = old side).
+  Code review comments on the current diff (`file:line` or
+  `file:start-end`, `~` = old side).
 
   1. `src/api.ts:23` - endpoint does not handle errors
   2. `src/utils.ts:~10` - old implementation was cleaner
   3. `src/api.ts` - whole file needs a pass
+  4. `src/db.ts:8-19` - this block duplicates the retry logic
 <
 A `~` before the line number marks the old (left) side of the diff. A bare path
-is a file-level comment. Multi-line comments are flattened to one line. After
-sending, all comments and their inline marks are removed.
+is a file-level comment. `start-end` is a multi-line comment, sent as one line.
+Multi-line comment text is flattened to one line. After sending, all comments
+and their inline marks are removed.
 
 vim:tw=78:ts=8:noet:ft=help:norl:
