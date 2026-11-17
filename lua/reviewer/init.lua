@@ -4,16 +4,18 @@ local hooks = require("reviewer.hooks")
 local keymaps = require("reviewer.keymaps")
 local store = require("reviewer.store")
 local marks = require("reviewer.marks")
+local send = require("reviewer.send")
 
 local initialized = false
 
----Attach reviewer to codediff sessions. Keys are fixed; opts is accepted so the
----plugin can be loaded with `opts = {}` without error.
----@param _opts? table
-function M.setup(_opts)
+---Attach reviewer to codediff sessions. Keys are fixed.
+---@param opts? { sidekick?: { tool?: string } } `sidekick.tool` is the tool `S` sends to; nil keeps sidekick's current tool
+function M.setup(opts)
   if initialized then
     return
   end
+
+  send.setup(opts and opts.sidekick)
 
   vim.api.nvim_set_hl(0, "ReviewerComment", { link = "Comment", default = true })
 

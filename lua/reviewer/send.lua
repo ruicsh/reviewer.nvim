@@ -4,10 +4,20 @@ local store = require("reviewer.store")
 local marks = require("reviewer.marks")
 local location = require("reviewer.location")
 
+---@type { tool?: string }
+local opts = {}
+
 ---@param msg string
 ---@param level number
 local function notify(msg, level)
   vim.notify(msg, level, { title = "reviewer.nvim" })
+end
+
+---Configure the send target. `tool` is a sidekick tool name (e.g. `copilot`);
+---when nil, sidekick uses whichever tool it has selected.
+---@param o? { tool?: string }
+function M.setup(o)
+  opts = o or {}
 end
 
 ---Markdown list of every comment, one `file:line - text` per line. A `~`
@@ -44,7 +54,7 @@ function M.to_sidekick()
   end
 
   local markdown = M.generate_markdown()
-  local sent, err = pcall(sidekick.send, { msg = markdown })
+  local sent, err = pcall(sidekick.send, { msg = markdown, name = opts.tool })
   if not sent then
     notify("Failed to send to sidekick: " .. tostring(err), vim.log.levels.ERROR)
     return

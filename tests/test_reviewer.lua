@@ -58,15 +58,31 @@ local function main()
 
   -- Successful send clears the store and the file.
   local sent
+  local sent_opts
   package.loaded["sidekick.cli"] = {
     send = function(opts)
+      sent_opts = opts
       sent = opts.msg
     end,
   }
+  send.setup({ tool = "copilot" })
   send.to_sidekick()
   assert(sent and sent:find("line one second line", 1, true), "payload not sent")
+  eq(sent_opts.name, "copilot", "configured tool is passed to sidekick")
   eq(store.count(), 0, "send clears comments")
   eq(#vim.fn.glob(vim.fn.stdpath("data") .. "/reviewer/*.json", false, true), 0, "send removes store file")
+
+  -- Without a configured tool, sidekick picks its own.
+  store.add("src/a.lua", 1, "no tool")
+  send.setup({})
+  send.to_sidekick()
+  eq(sent_opts.name, nil, "no tool option leaves the name to sidekick")
+
+  -- The public option lives under `sidekick.tool`.
+  require("reviewer").setup({ sidekick = { tool = "claude" } })
+  store.add("src/a.lua", 1, "nested option")
+  send.to_sidekick()
+  eq(sent_opts.name, "claude", "setup forwards sidekick.tool")
 
   -- A failing send must keep the comments.
   store.add("src/a.lua", 5, "keep me")

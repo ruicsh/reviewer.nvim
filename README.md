@@ -28,6 +28,17 @@ Load the plugin before you open codediff (`VeryLazy` or `lazy = false`). The key
 
 sidekick.nvim is optional and loaded on demand: it is only required when you press `S`. The `optional = true` entry lets lazy.nvim load it when `S` requires it without force-loading it at startup.
 
+## Options
+
+```lua
+opts = {
+  sidekick = {
+    -- sidekick tool that receives the comments; nil = sidekick's current tool
+    tool = "copilot",
+  },
+}
+```
+
 ## Keys (in a codediff diff)
 
 | Key         | Action                                         |
