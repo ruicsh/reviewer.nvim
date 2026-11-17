@@ -128,7 +128,13 @@ function M.setup_keymaps(tabpage)
   -- Inline layout shows only the modified buffer, and the lifecycle can lag
   -- behind the windows, so map whatever the session windows display too.
   local orig_buf, mod_buf = lifecycle.get_buffers(tabpage)
-  local bufs = { orig_buf, mod_buf }
+  local bufs = {}
+  if orig_buf then
+    table.insert(bufs, orig_buf)
+  end
+  if mod_buf then
+    table.insert(bufs, mod_buf)
+  end
   local orig_win, mod_win = lifecycle.get_windows(tabpage)
   for _, win in ipairs({ orig_win or false, mod_win or false }) do
     if win and vim.api.nvim_win_is_valid(win) then

@@ -85,13 +85,14 @@ local function main()
   eq(sent_opts.name, "claude", "setup forwards sidekick.tool")
 
   -- Keymap options override defaults, keep unset defaults, and `false`
-  -- disables an action. Stub the codediff lifecycle the keymapper reads.
+  -- disables an action. Stub the codediff lifecycle the keymapper reads, as an
+  -- inline-layout session: only the modified buffer exists.
   local keymaps = require("reviewer.keymaps")
   local km_buf = vim.api.nvim_create_buf(false, true)
   package.preload["codediff.ui.lifecycle"] = function()
     return {
       get_buffers = function()
-        return km_buf, km_buf
+        return nil, km_buf
       end,
       get_windows = function() end,
     }
