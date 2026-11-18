@@ -58,12 +58,15 @@ end
 ---@param root string repository root
 ---@return sidekick.Text|nil
 local function mention(Loc, comment, root)
+  -- A scoped comment is about the index or a commit, not the working tree, so a
+  -- file reference would point at the wrong bytes. File-level comments too: the
+  -- guard runs before the `line == 0` short path.
+  if (comment.side or "new") == "old" or (comment.scope and comment.scope ~= "") then
+    return nil
+  end
   local path = vim.fs.joinpath(root, comment.file)
   if comment.line == 0 then
     return Loc.get({ name = path, cwd = root })[1]
-  end
-  if (comment.side or "new") == "old" or (comment.scope and comment.scope ~= "") then
-    return nil
   end
   local last = comment.end_line or comment.line
   return Loc.get({
