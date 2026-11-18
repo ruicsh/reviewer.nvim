@@ -87,18 +87,26 @@ One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo
 
 ## Send format
 
-`<localleader>S` sends a markdown list, one line per comment:
+`<localleader>S` sends a markdown list. Each comment is a reference line, then its text on the next line, then a blank line:
 
 ```
 Code review comments on the current diff (`~` = old side).
 
-1. `src/api.ts:23` - endpoint does not handle errors
-2. `src/utils.ts:~10` - old implementation was cleaner
-3. `src/api.ts` - whole file needs a pass
-4. `src/db.ts:8-19` - this block duplicates the retry logic
+1. `src/api.ts:23`
+endpoint does not handle errors
+
+2. `src/utils.ts:~10`
+old implementation was cleaner
+
+3. `src/api.ts`
+whole file needs a pass
+
+4. `src/db.ts:8-19`
+this block duplicates the retry logic
+
 ```
 
-A `~` before the line number marks the old (left) side of the diff; the header only mentions it when such a comment is present. Inline diffs never produce one, since the original pane is not shown. A bare path is a file-level comment. `start-end` is a multi-line comment, sent as one line. Multi-line comments are flattened to one line. After sending, all comments and their inline marks are removed.
+A `~` before the line number marks the old (left) side of the diff; the header only mentions it when such a comment is present. Inline diffs never produce one, since the original pane is not shown. A bare path is a file-level comment. `start-end` is a multi-line comment. Comment text is flattened to one line. After sending, all comments and their inline marks are removed.
 
 The payload is built as sidekick text, so new-side comments are sent as that tool's own file reference (`@file#L10-20` for Claude, `@file :L10-L20` elsewhere) and expand to the file. Old-side comments keep the `file:~10` form, since a reference would point at the current file where that line no longer exists.
 

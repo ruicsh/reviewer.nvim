@@ -33,30 +33,6 @@ local function header(all)
   return "Code review comments on the current diff."
 end
 
----Plain location suffix for a comment (`\`file:line\` - text`), shared by the
----markdown preview and the chunk fallback.
----@param comment ReviewerComment
----@return string
-local function plain_suffix(comment)
-  return string.format("`%s` - %s", location.format(comment), (comment.text:gsub("\n", " ")))
-end
-
----Markdown list of every comment, one `file:line - text` per line. A `~`
----before the line number marks the old (left) side of the diff.
----@return string|nil nil when there are no comments
-function M.generate_markdown()
-  local all = store.get_all()
-  if #all == 0 then
-    return nil
-  end
-
-  local lines = { header(all), "" }
-  for i, comment in ipairs(all) do
-    table.insert(lines, string.format("%d. %s", i, plain_suffix(comment)))
-  end
-  return table.concat(lines, "\n")
-end
-
 ---Sidekick text chunks for a comment's position, or nil when the plain form has
 ---to be used. Mentions point at the current file, so old-side comments keep the
 ---plain form: their line is gone from it.
@@ -91,7 +67,7 @@ local function payload_text(all)
 
   local lines = { { { header(all) } }, {} }
   for i, comment in ipairs(all) do
-    local line = { { string.format("%d. ", i) } }
+    local ref = { { string.format("%d. ", i) } }
     -- `mention` calls an internal sidekick module; a signature change there
     -- must degrade to the plain form, not raise out of `to_sidekick`.
     local loc
@@ -100,11 +76,13 @@ local function payload_text(all)
       loc = ok2 and res or nil
     end
     if loc then
-      vim.list_extend(line, loc)
+      vim.list_extend(ref, loc)
     else
-      table.insert(line, { plain_suffix(comment) })
+      table.insert(ref, { string.format("`%s`", location.format(comment)) })
     end
-    table.insert(lines, line)
+    table.insert(lines, ref)
+    table.insert(lines, { { (comment.text:gsub("\n", " ")) } })
+    table.insert(lines, {})
   end
   return lines
 end
