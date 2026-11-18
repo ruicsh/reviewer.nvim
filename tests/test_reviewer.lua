@@ -5,6 +5,7 @@ local store = require("reviewer.store")
 local send = require("reviewer.send")
 local location = require("reviewer.location")
 local fugitive = require("reviewer.sources.fugitive")
+local hooks = require("reviewer.hooks")
 
 local function eq(actual, expected, msg)
   assert(actual == expected, string.format("%s: expected %s, got %s", msg, tostring(expected), tostring(actual)))
@@ -178,6 +179,63 @@ local function main()
   assert(send.generate_markdown():find("src/a.lua:50 (staged)", 1, true), "scope in the payload")
   store.delete(staged.id)
   store.delete(unstaged.id)
+
+  -- codediff scope: a pane that shows the index or a commit must not share a
+  -- comment identity with the working tree. The new side decides what the pane
+  -- shows, so a nil (or WORKING) target is the working tree and stays unscoped.
+  eq(hooks.scope(nil), nil, "no session has no scope")
+  eq(hooks.scope({ original_revision = "HEAD" }), nil, "working tree is unscoped")
+  eq(hooks.scope({ original_revision = "HEAD", modified_revision = "WORKING" }), nil, "WORKING is unscoped")
+  eq(hooks.scope({ original_revision = "HEAD", modified_revision = ":0" }), "staged", "index pane is staged")
+  eq(hooks.scope({ original_revision = ":3", modified_revision = ":2" }), "conflict:2", "conflict side is scoped")
+  eq(
+    hooks.scope({ original_revision = "abc1234^", modified_revision = "abc1234" }),
+    "commit:abc1234",
+    "commit pairs name the commit"
+  )
+  eq(
+    hooks.scope({ original_revision = "abc1234", modified_revision = "def5678" }),
+    "rev:abc1234..def5678",
+    "two-revision diffs name both sides"
+  )
+  eq(hooks.scope({ modified_revision = "abc1234" }), "commit:abc1234", "single-side commit is scoped")
+  eq(
+    hooks.scope({ original_revision = "0123456789abcdef", modified_revision = "fedcba9876543210" }),
+    "rev:0123456..fedcba9",
+    "hashes are shortened like git does"
+  )
+
+  -- Same file line, working tree and commit: two comments, two locations.
+  local wt = store.add("src/a.lua", 18, "wt note")
+  local commit = store.add("src/a.lua", 18, "commit note", "new", nil, "commit:abc1234")
+  eq(store.get_at_line("src/a.lua", 18, "new").text, "wt note", "working-tree lookup ignores the commit comment")
+  eq(store.get_at_line("src/a.lua", 18, "new", "commit:abc1234").text, "commit note", "commit comment is addressable")
+  eq(location.format(commit), "src/a.lua:18 (commit:abc1234)", "commit scope in the location")
+  assert(send.generate_markdown():find("src/a.lua:18 (commit:abc1234)", 1, true), "commit scope in the payload")
+
+  -- Marks follow the pane's slice: the same row carries one comment or the
+  -- other, never both.
+  local function box_text(row)
+    local out = {}
+    for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(marks_buf, ns, 0, -1, { details = true })) do
+      if mark[2] == row and mark[4].virt_lines then
+        for _, line in ipairs(mark[4].virt_lines) do
+          for _, chunk in ipairs(line) do
+            table.insert(out, chunk[1])
+          end
+        end
+      end
+    end
+    return table.concat(out, "\n")
+  end
+  marks.render_for_buffer(marks_buf, "new", "src/a.lua")
+  assert(box_text(17):find("wt note", 1, true), "working-tree pane draws the working-tree comment")
+  assert(not box_text(17):find("commit note", 1, true), "working-tree pane hides the commit comment")
+  marks.render_for_buffer(marks_buf, "new", "src/a.lua", "commit:abc1234")
+  assert(box_text(17):find("commit note", 1, true), "commit pane draws the commit comment")
+  assert(not box_text(17):find("wt note", 1, true), "commit pane hides the working-tree comment")
+  store.delete(wt.id)
+  store.delete(commit.id)
 
   -- A fugitive status buffer: positions are derived from the buffer text, so a
   -- comment lands on its hunk line, and a collapsed hunk keeps its count on the
@@ -443,7 +501,6 @@ local function main()
   eq(range_end, 12, "visual range ends at the higher line")
 
   -- Cursor position: window matching plus the virtual-buffer / inline fallback.
-  local hooks = require("reviewer.hooks")
   local cur_win = vim.api.nvim_get_current_win()
   local cur_buf = vim.api.nvim_get_current_buf()
   local buf_lines = {}
@@ -508,6 +565,50 @@ local function main()
   eq(line, 7, "cursor line holds with a real path")
   eq(side, "new", "real path on the modified side")
 
+  -- The source reports the revision slice of the pane, so a commit review does
+  -- not store its comments as working-tree comments.
+  hk.get_git_context = function()
+    return { git_root = "/repo", original_revision = "abc1234^", modified_revision = "abc1234" }
+  end
+  eq(codediff_source.position(0).scope, "commit:abc1234", "codediff position carries the pane's scope")
+  hk.get_git_context = function()
+    return { git_root = "/repo" }
+  end
+  eq(codediff_source.position(0).scope, nil, "working-tree panes stay unscoped")
+
+  -- Jumping to a comment from another slice: the file can be selected, but a
+  -- fixed revision cannot appear there, so the jump says what it cannot show.
+  local notes = {}
+  local orig_notify = vim.notify
+  vim.notify = function(msg)
+    table.insert(notes, msg)
+  end
+  local unshowable = { file = "bar.lua", line = 7, side = "new", scope = "staged", text = "x" }
+  codediff_source.jump(unshowable)
+  eq(#notes, 1, "a jump to another slice warns")
+  assert(notes[1]:find("staged", 1, true), "the warning names the slice")
+
+  -- An explorer re-resolves the file's group on selection, so staged/unstaged
+  -- jumps need no warning there; another revision still does.
+  notes = {}
+  local explorer = { tree = {}, on_file_select = function() end }
+  hk.get_explorer = function()
+    return explorer
+  end
+  package.loaded["codediff.ui.explorer.tree"] = {
+    get_all_files = function()
+      return { { data = { path = "bar.lua" } } }
+    end,
+  }
+  codediff_source.jump(unshowable)
+  eq(#notes, 0, "an explorer resolves staged and unstaged without a warning")
+  codediff_source.jump({ file = "bar.lua", line = 7, side = "new", scope = "commit:abc1234", text = "x" })
+  eq(#notes, 1, "a commit comment in a working-tree review warns")
+  assert(notes[1]:find("commit:abc1234", 1, true), "the warning names the commit")
+  hk.get_explorer = nil
+  package.loaded["codediff.ui.explorer.tree"] = nil
+  vim.notify = orig_notify
+
   -- Visual-mode add stores the selection as a range through the popup.
   local popup = require("reviewer.popup")
   local popup_open = popup.open
@@ -553,6 +654,39 @@ local function main()
   store.load()
   eq(store.count(), 1, "original branch comments survive a branch round-trip")
   eq(store.get_all()[1].text, "keep me", "branch comments are isolated, not merged")
+
+  -- Sending: a scoped comment cannot become a working-tree file reference, so it
+  -- keeps the plain `file (scope)` form. That includes file-level comments, whose
+  -- reference path would otherwise short-circuit the scope guard.
+  local captured
+  package.loaded["sidekick.cli"] = {
+    send = function(payload)
+      captured = payload.text
+    end,
+  }
+  package.loaded["sidekick.cli.context.location"] = {
+    get = function()
+      -- A sidekick Text: one line, one chunk. `mention` takes `[1]`.
+      return { { { "REF" } } }
+    end,
+  }
+  store.add("src/a.lua", 18, "working tree line")
+  store.add("src/a.lua", 0, "commit file note", "new", nil, "commit:abc1234")
+  send.to_sidekick()
+  package.loaded["sidekick.cli.context.location"] = nil
+
+  local chunks = {}
+  for _, entry in ipairs(captured) do
+    for _, chunk in ipairs(entry) do
+      table.insert(chunks, chunk[1])
+    end
+    table.insert(chunks, "\n")
+  end
+  local payload = table.concat(chunks)
+  assert(payload:find("REF", 1, true), "unscoped comments still use a file reference")
+  assert(payload:find("src/a.lua (commit:abc1234)", 1, true), "scoped file comment keeps its scope in the payload")
+  assert(payload:find("commit file note", 1, true), "scoped file comment text is sent")
+  eq(store.count(), 0, "a successful send clears the comments")
 
   vim.fn.chdir(repo)
   vim.fn.delete(repo, "rf")

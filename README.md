@@ -42,6 +42,8 @@ The status buffer is rebuilt whenever the index changes. Marks are re-derived fr
 
 Staged and unstaged are separate scopes: the same file line appears in both sections with different content, so a staged comment and an unstaged comment on the same line are two different comments. The scope is part of the sent location (`src/api.ts:12 (staged)`), so the agent knows to read the index rather than the working tree.
 
+codediff gets the same treatment when its panes do not show the working tree. A comment on a staged file is `staged`; a comment on a commit from the history panel is `commit:abc1234`; a comparison of two revisions is `rev:abc1234..def5678`; a conflict side is `conflict:2`. A comment on a working-tree diff stays unscoped. Without this, a comment on a commit and a comment on the same line of the working tree would look identical in the payload and the agent would read the wrong bytes.
+
 ## Options
 
 ```lua
@@ -101,9 +103,9 @@ Comment popup: `<C-s>` submits, `<Esc>` or `q` cancels.
 
 ## Storage
 
-One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo>-<branch>.json`. Comments on one branch never show on another. A codediff review and a fugitive status review of the same branch share the store file, but each comment is scoped to its surface, so a comment left on one surface does not appear on the other.
+One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo>-<branch>.json`. Comments on one branch never show on another. A codediff review and a fugitive status review of the same branch share the store file.
 
-A comment's identity is `file`, `line`, `side`, and `scope`. `scope` is the source's slice of the review — `staged`, `unstaged`, or `untracked` for a fugitive status buffer, empty for codediff.
+A comment's identity is `file`, `line`, `side`, and `scope`. `scope` names the slice of the repository the comment is about: the working tree (empty), `staged`, `unstaged`, or `untracked` in a fugitive status buffer, and `staged`, `conflict:2`, `commit:abc1234`, or `rev:abc1234..def5678` in codediff. Comments are therefore isolated by content, not by surface: a staged line commented in a fugitive status buffer and the same index line commented in codediff are one comment, while a working-tree comment and a commit comment on the same file line are two.
 
 ## Send format
 

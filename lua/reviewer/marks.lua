@@ -27,7 +27,8 @@ end
 ---@param bufnr number
 ---@param side "old"|"new"
 ---@param file string
-function M.render_for_buffer(bufnr, side, file)
+---@param scope? string revision slice the pane shows; nil for the working tree
+function M.render_for_buffer(bufnr, side, file, scope)
   if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) or not file then
     return
   end
@@ -35,7 +36,7 @@ function M.render_for_buffer(bufnr, side, file)
   vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
 
   local line_count = vim.api.nvim_buf_line_count(bufnr)
-  for _, comment in ipairs(store.get_for_file(file, side)) do
+  for _, comment in ipairs(store.get_for_file(file, side, scope)) do
     local virt_lines = build_box(comment.text)
 
     if comment.line == 0 then
@@ -90,15 +91,18 @@ function M.render_for_buffer(bufnr, side, file)
   end
 end
 
-function M.refresh()
+---Redraw the codediff panes. `scope` is the revision slice the session shows,
+---so a commit's comments never land in a working-tree pane.
+---@param scope? string
+function M.refresh(scope)
   local hooks = require("reviewer.hooks")
   local orig_buf, mod_buf = hooks.get_buffers()
   local orig_path, mod_path = hooks.get_paths()
   if orig_buf then
-    M.render_for_buffer(orig_buf, "old", orig_path)
+    M.render_for_buffer(orig_buf, "old", orig_path, scope)
   end
   if mod_buf then
-    M.render_for_buffer(mod_buf, "new", mod_path)
+    M.render_for_buffer(mod_buf, "new", mod_path, scope)
   end
 end
 

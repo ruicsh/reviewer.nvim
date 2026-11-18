@@ -53,13 +53,13 @@ function M.position(_)
   end
   -- In codediff the first buffer row is both file line 1 and the anchor a
   -- file-level comment hangs off, so line 1 is an anchor too.
-  return { file = file, line = line, side = side or "new", at_file_anchor = line == 1 }
+  return { file = file, line = line, side = side or "new", scope = hooks.current_scope(), at_file_anchor = line == 1 }
 end
 
 ---@param _? number unused: marks are rendered for both panes of the session
 function M.refresh(_)
   -- Marks are rendered for both panes of the session, not one buffer.
-  marks.refresh()
+  marks.refresh(hooks.current_scope())
 end
 
 ---@return string|nil
@@ -77,6 +77,37 @@ function M.row(comment)
   return comment.line == 0 and 1 or comment.line
 end
 
+---Whether a scope names content the working tree cannot show. The index and the
+---working tree are one family: an explorer selects a file and its group together,
+---so a jump between them lands on the right slice. A revision is fixed per
+---tabpage, so a comment from another revision cannot be drawn there.
+---@param scope string|nil
+---@return boolean
+local function revision_scope(scope)
+  return scope ~= nil and (scope:match("^commit:") or scope:match("^rev:") or scope:match("^conflict:")) ~= nil
+end
+
+---A jump can select the file, but not change which revision the tabpage shows.
+---Warn when the comment's slice is not the one on screen instead of moving the
+---cursor to a line that holds no comment.
+---@param comment ReviewerComment
+---@param has_explorer boolean
+local function warn_if_unshowable(comment, has_explorer)
+  local shown = hooks.current_scope()
+  local want = comment.scope
+  if want == shown then
+    return
+  end
+  -- An explorer re-resolves the scope of whichever file it selects.
+  if has_explorer and not revision_scope(want) and not revision_scope(shown) then
+    return
+  end
+  notify(
+    string.format("Comment is in %s; this review shows %s", want or "the working tree", shown or "the working tree"),
+    vim.log.levels.WARN
+  )
+end
+
 ---Jump to a comment: select its file in the explorer, then move to the line.
 ---@param comment ReviewerComment
 ---@return boolean
@@ -90,6 +121,7 @@ function M.jump(comment)
 
   local explorer = hooks.get_explorer(tabpage)
   if not explorer then
+    warn_if_unshowable(comment, false)
     vim.defer_fn(function()
       pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
     end, 0)
@@ -110,6 +142,7 @@ function M.jump(comment)
     return true
   end
 
+  warn_if_unshowable(comment, true)
   explorer.on_file_select(file_data)
   vim.defer_fn(function()
     local orig_win, mod_win = lc.get_windows(vim.api.nvim_get_current_tabpage())

@@ -87,7 +87,11 @@ Two surfaces are supported, through a source per surface:
 
 codediff diff (both layouts) ~
   Positions come from the codediff lifecycle: the window tells the side, the
-  session path tells the file.
+  session path tells the file. When a pane shows something other than the
+  working tree, its revision becomes the comment's scope: `staged` for the
+  index, `conflict:2` for a conflict side, `commit:abc1234` for a commit from
+  the history panel, and `rev:abc1234..def5678` for a two-revision diff. A
+  working-tree diff stays unscoped.
 
 fugitive `:Git` status buffer ~
   Positions come from the buffer text. A fugitive status buffer is a rendered
@@ -151,12 +155,16 @@ Comment popup: |<C-s>| submits, |<Esc>| or |q| cancels.
 One JSON store per repository and branch, in
 `~/.local/share/nvim/reviewer/<repo>-<branch>.json`. Comments on one branch
 never show on another. A codediff review and a fugitive status review of the
-same branch share the store file, but each comment is scoped to its surface,
-so a comment left on one surface does not appear on the other.
+same branch share the store file.
 
-A comment's identity is `file`, `line`, `side`, and `scope`. `scope` is the
-source's slice of the review: `staged`, `unstaged`, or `untracked` for a
-fugitive status buffer, empty for codediff.
+A comment's identity is `file`, `line`, `side`, and `scope`. `scope` names the
+slice of the repository the comment is about: the working tree (empty),
+`staged`, `unstaged`, or `untracked` in a fugitive status buffer, and
+`staged`, `conflict:2`, `commit:abc1234`, or `rev:abc1234..def5678` in
+codediff. Comments are isolated by content, not by surface: a staged line
+commented in a fugitive status buffer and the same index line commented in
+codediff are one comment, while a working-tree comment and a commit comment on
+the same file line are two.
 
 ================================================================================
 7. SENDING TO SIDEKICK                                    *reviewer-send*

@@ -68,6 +68,66 @@ local function get_lifecycle()
   return ok and lifecycle or nil
 end
 
+---Shorten a revision for display: a hash keeps the seven characters git itself
+---shows in `git log --oneline`; a ref stays whole.
+---@param rev string
+---@return string
+local function short_rev(rev)
+  if rev:match("^%x+$") and #rev > 7 then
+    return rev:sub(1, 7)
+  end
+  return rev
+end
+
+---Scope of a codediff diff: the revision slice its panes show. The new side
+---decides. `nil` (or `WORKING`) means the right pane is the working tree, which
+---is what an unscoped `file:line` already names. Anything else is content only
+---reachable through git, so a comment must not share its identity with the
+---working tree: the index is `staged`, a conflict stage `conflict:2`, a commit
+---`commit:abc1234`, and any other revision pair `rev:base..target`.
+---
+---Lives here because the codediff lifecycle, not the source contract, is what
+---knows the revisions; the source and the mark renderer both ask this module.
+---@param ctx? { git_root?: string, original_revision?: string, modified_revision?: string }
+---@return string|nil
+function M.scope(ctx)
+  if not ctx then
+    return nil
+  end
+  local base, target = ctx.original_revision, ctx.modified_revision
+  if not target or target == "WORKING" then
+    return nil
+  end
+  if target == ":0" then
+    return "staged"
+  end
+  local stage = target:match("^:(%d)$")
+  if stage then
+    return "conflict:" .. stage
+  end
+  if base and base ~= "" and base ~= target then
+    if base == target .. "^" then
+      return "commit:" .. short_rev(target)
+    end
+    return string.format("rev:%s..%s", short_rev(base), short_rev(target))
+  end
+  return "commit:" .. short_rev(target)
+end
+
+---Scope of the session on `tabpage`.
+---@param tabpage number|nil
+---@return string|nil
+function M.scope_for(tabpage)
+  local lifecycle = get_lifecycle()
+  return M.scope(lifecycle and lifecycle.get_git_context(tabpage))
+end
+
+---Scope of the session on screen.
+---@return string|nil
+function M.current_scope()
+  return M.scope_for(vim.api.nvim_get_current_tabpage())
+end
+
 ---Absolute path of the file a pane buffer shows, for codediff virtual buffers too.
 ---@param bufnr number
 ---@return string|nil
@@ -230,13 +290,13 @@ function M.on_session_created(tabpage)
         if bufnr ~= ob and bufnr ~= mb then
           return
         end
-        marks.refresh()
+        marks.refresh(M.scope_for(current_tabpage))
       end,
     })
   end
 
   vim.defer_fn(function()
-    marks.refresh()
+    marks.refresh(M.scope_for(tabpage))
   end, 100)
 
   -- Focus the modified pane once per tabpage; CodeDiffOpen fires on every
@@ -261,7 +321,7 @@ function M.on_file_changed(tabpage)
   prepare_buffers(lifecycle, tabpage)
 
   vim.defer_fn(function()
-    marks.refresh()
+    marks.refresh(M.scope_for(tabpage))
   end, 50)
 end
 
