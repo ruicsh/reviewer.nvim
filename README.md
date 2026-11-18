@@ -137,11 +137,14 @@ The payload is built as sidekick text, so new-side comments are sent as that too
 ```bash
 make test           # headless unit tests
 make test-fugitive  # end-to-end against a real fugitive status buffer
+make test-codediff  # end-to-end against a real codediff session
 ```
 
 `tests/test_reviewer.lua` runs headless: store CRUD, branch-scoped paths, scope isolation, fugitive position derivation, markdown shape, and the clear-on-success / keep-on-failure send behavior.
 
 `tests/test_fugitive.lua` opens a real `:Git` buffer in a throwaway repo: it expands a hunk, checks that the cursor maps to the right file line and side, and that a comment's box follows the hunk through collapse, expand, and a status rebuild. It skips when vim-fugitive is not installed.
+
+`tests/test_codediff.lua` opens a real `:CodeDiff` session in a throwaway repo and checks the revision the panes actually show: `staged` for an index file, no scope for an unstaged file, `rev:` for a two-revision diff, and `commit:` for a history entry. It skips when codediff.nvim is not installed.
 
 ## License
 

@@ -1,7 +1,7 @@
 # reviewer.nvim Makefile
 # Branch-scoped review comments for codediff.nvim
 
-.PHONY: test test-file test-fugitive lint format check help
+.PHONY: test test-file test-fugitive test-codediff lint format check help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -30,13 +30,19 @@ lint:
 format:
 	@stylua lua/ plugin/ tests/
 
-# Run all checks (format, lint, test, fugitive end-to-end)
-check: format lint test test-fugitive
+# Run all checks (format, lint, tests, fugitive and codediff end-to-end)
+check: format lint test test-fugitive test-codediff
 
 # End-to-end fugitive test. Skips when vim-fugitive is not installed.
 test-fugitive:
 	@TMP=$$(mktemp -d); \
 	XDG_DATA_HOME=$$TMP/data nvim --headless -u NONE --noplugin -l tests/test_fugitive.lua; \
+	status=$$?; rm -rf $$TMP; exit $$status
+
+# End-to-end codediff test. Skips when codediff.nvim is not installed.
+test-codediff:
+	@TMP=$$(mktemp -d); \
+	XDG_DATA_HOME=$$TMP/data nvim --headless -u NONE --noplugin -l tests/test_codediff.lua; \
 	status=$$?; rm -rf $$TMP; exit $$status
 
 # Display help
@@ -46,9 +52,10 @@ help:
 	@echo "  make test              Run the test suite"
 	@echo "  make test-file FILE=   Run a specific test file"
 	@echo "  make test-fugitive     End-to-end fugitive status buffer test"
+	@echo "  make test-codediff     End-to-end codediff review surface test"
 	@echo "  make lint              Run luacheck linter"
 	@echo "  make format            Format code with stylua"
-	@echo "  make check             Run format, lint, tests, fugitive"
+	@echo "  make check             Run format, lint, tests, fugitive, codediff"
 	@echo "  make help              Show this help message"
 	@echo ""
 	@echo "Examples:"
