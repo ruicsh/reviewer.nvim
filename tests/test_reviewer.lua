@@ -608,6 +608,25 @@ local function main()
   package.loaded["codediff.ui.explorer.tree"] = nil
   vim.notify = orig_notify
 
+  -- A history entry diffs a commit against its parent, but the comment is about
+  -- the commit: the scope names one revision the agent can `git show`.
+  local base_session = hk.get_session
+  hk.get_session = function()
+    return { panel = { name = "history", data = { parents = { ["abc1234"] = { "def5678" } } } } }
+  end
+  hk.get_git_context = function()
+    return { original_revision = "def5678", modified_revision = "abc1234" }
+  end
+  eq(hooks.scope_for(0), "commit:abc1234", "a history entry names its commit")
+  hk.get_git_context = function()
+    return { original_revision = "1111111", modified_revision = "abc1234" }
+  end
+  eq(hooks.scope_for(0), "rev:1111111..abc1234", "a revision comparison names both sides")
+  hk.get_session = base_session
+  hk.get_git_context = function()
+    return { git_root = "/repo" }
+  end
+
   -- Visual-mode add stores the selection as a range through the popup.
   local popup = require("reviewer.popup")
   local popup_open = popup.open

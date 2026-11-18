@@ -119,7 +119,33 @@ end
 ---@return string|nil
 function M.scope_for(tabpage)
   local lifecycle = get_lifecycle()
-  return M.scope(lifecycle and lifecycle.get_git_context(tabpage))
+  if not lifecycle then
+    return nil
+  end
+  local ctx = lifecycle.get_git_context(tabpage)
+  if not ctx then
+    return nil
+  end
+
+  -- A history entry diffs one commit against its parent, but the review is
+  -- about the commit: name it, so the agent can `git show` a single revision
+  -- instead of reconstructing a parent pair.
+  local target = ctx.modified_revision
+  local session = lifecycle.get_session(tabpage)
+  local panel = session and session.panel
+  if panel and panel.name == "history" and target and target:match("^%x+$") then
+    local parents = panel.data and panel.data.parents
+    local first_parent = parents and parents[target] and parents[target][1]
+    -- A root commit, or a file added by the commit, has no parent and no base.
+    local is_parent = (first_parent ~= nil and first_parent == ctx.original_revision)
+      or ctx.original_revision == target .. "^"
+      or (first_parent == nil and ctx.original_revision == nil)
+    if is_parent then
+      return "commit:" .. short_rev(target)
+    end
+  end
+
+  return M.scope(ctx)
 end
 
 ---Scope of the session on screen.
