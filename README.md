@@ -130,7 +130,7 @@ this block duplicates the retry logic
 
 A `~` before the line number marks the old (left) side of the diff; the header only mentions it when such a comment is present. Inline diffs never produce one, since the original pane is not shown. A bare path is a file-level comment. `start-end` is a multi-line comment. Comment text is flattened to one line. After sending, all comments and their inline marks are removed.
 
-The payload is built as sidekick text, so new-side comments are sent as that tool's own file reference (`@file#L10-20` for Claude, `@file :L10-L20` elsewhere) and expand to the file. Old-side comments keep the `file:~10` form, since a reference would point at the current file where that line no longer exists.
+The payload is built as sidekick text, so new-side comments are sent as that tool's own file reference (`@file#L10-20` for Claude, `@file :L10-L20` elsewhere) and expand to the file. Old-side comments keep the `file:~10` form, since a reference would point at the current file where that line no longer exists. `Unstaged` and `untracked` comments keep the reference too: their content is the working tree. `Staged` comments keep it while the file has no unstaged edits, so the index and the working tree agree at that line; once the working tree moves they keep the plain form. `conflict:N`, `commit:abc1234`, and `rev:a..b` always keep the plain form, because only it names the place the line lives.
 
 ## Tests
 

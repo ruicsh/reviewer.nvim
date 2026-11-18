@@ -403,14 +403,13 @@ local function main()
   assert(sent:find("`src/c.lua:~2`", 1, true), "old-side comments keep the plain form")
   assert(sent:find("`~` = old side", 1, true), "chunk header explains old-side comments")
 
-  -- A scoped comment keeps the plain form even with location context: a staged
-  -- line lives in the index, not the working tree, and only the plain form
-  -- names the scope.
+  -- A revision comment keeps the plain form even with location context: only
+  -- the plain form names the commit the line lives in.
   local calls_before = #calls
-  store.add("src/a.lua", 7, "scoped", "new", nil, "staged")
+  store.add("src/a.lua", 7, "scoped", "new", nil, "commit:abc1234")
   send.to_sidekick()
-  assert(sent:find("`src/a.lua:7 (staged)`", 1, true), "scoped comment keeps its scope in the payload")
-  eq(#calls, calls_before, "a scoped comment is not made into a working-tree reference")
+  assert(sent:find("`src/a.lua:7 (commit:abc1234)`", 1, true), "revision comment keeps its scope in the payload")
+  eq(#calls, calls_before, "a revision comment is not made into a working-tree reference")
   package.loaded["sidekick.cli.context.location"] = nil
 
   -- Without a configured tool, sidekick picks its own.
@@ -655,9 +654,9 @@ local function main()
   eq(store.count(), 1, "original branch comments survive a branch round-trip")
   eq(store.get_all()[1].text, "keep me", "branch comments are isolated, not merged")
 
-  -- Sending: a scoped comment cannot become a working-tree file reference, so it
-  -- keeps the plain `file (scope)` form. That includes file-level comments, whose
-  -- reference path would otherwise short-circuit the scope guard.
+  -- Sending: only the index and revisions need the plain `file (scope)` form. A
+  -- working-tree scope such as `unstaged` still gets a file reference, and a
+  -- file-level commit comment must not short-circuit into one.
   local captured
   package.loaded["sidekick.cli"] = {
     send = function(payload)
@@ -670,8 +669,26 @@ local function main()
       return { { { "REF" } } }
     end,
   }
+  store.delete(store.get_all()[1].id)
+  -- A staged comment can keep a reference while the file has no unstaged edits;
+  -- once the working tree moves, the plain form has to name the index.
+  vim.fn.writefile({ "one" }, repo .. "/clean.lua")
+  git("add", "clean.lua")
+  git("commit", "-qm", "clean base")
+  vim.fn.writefile({ "one", "two" }, repo .. "/clean.lua")
+  git("add", "clean.lua")
+  vim.fn.writefile({ "one" }, repo .. "/dirty.lua")
+  git("add", "dirty.lua")
+  git("commit", "-qm", "dirty base")
+  vim.fn.writefile({ "one", "two" }, repo .. "/dirty.lua")
+  git("add", "dirty.lua")
+  vim.fn.writefile({ "one", "two", "three" }, repo .. "/dirty.lua")
+
   store.add("src/a.lua", 18, "working tree line")
+  store.add("src/a.lua", 19, "unstaged line", "new", nil, "unstaged")
   store.add("src/a.lua", 0, "commit file note", "new", nil, "commit:abc1234")
+  store.add("clean.lua", 2, "staged clean note", "new", nil, "staged")
+  store.add("dirty.lua", 2, "staged dirty note", "new", nil, "staged")
   send.to_sidekick()
   package.loaded["sidekick.cli.context.location"] = nil
 
@@ -683,7 +700,10 @@ local function main()
     table.insert(chunks, "\n")
   end
   local payload = table.concat(chunks)
-  assert(payload:find("REF", 1, true), "unscoped comments still use a file reference")
+  local _, refs = payload:gsub("REF", "")
+  eq(refs, 3, "unscoped, unstaged, and clean staged comments use a file reference")
+  assert(payload:find("dirty.lua:2 (staged)", 1, true), "a staged comment with unstaged edits stays plain")
+  assert(not payload:find("clean.lua:2 (staged)", 1, true), "a clean staged comment keeps its reference")
   assert(payload:find("src/a.lua (commit:abc1234)", 1, true), "scoped file comment keeps its scope in the payload")
   assert(payload:find("commit file note", 1, true), "scoped file comment text is sent")
   eq(store.count(), 0, "a successful send clears the comments")

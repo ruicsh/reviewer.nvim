@@ -197,6 +197,11 @@ The payload is built as sidekick text, so new-side comments are sent as that
 tool's own file reference (`@file#L10-20` for Claude, `@file :L10-L20`
 elsewhere) and expand to the file. Old-side comments keep the `file:~10` form,
 since a reference would point at the current file where that line no longer
-exists.
+exists. `unstaged` and `untracked` comments keep the reference as well: their
+content is the working tree. `staged` comments keep it while the file has no
+unstaged edits, so the index and the working tree agree at that line; once the
+working tree moves they keep the plain form. `conflict:N`, `commit:abc1234`,
+and `rev:a..b` always keep the plain form, because only it names the place the
+line lives.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

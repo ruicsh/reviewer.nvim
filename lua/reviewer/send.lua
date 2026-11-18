@@ -48,21 +48,49 @@ function M.generate_markdown(all)
   return table.concat(lines, "\n")
 end
 
+---Scopes whose new side is the working tree itself. An unstaged or untracked
+---line is exactly what a file reference points at; the index, a conflict stage,
+---and a commit are not, unless the index still matches the file.
+---@param scope string|nil
+---@return boolean
+local function in_working_tree(scope)
+  return scope == nil or scope == "" or scope == "unstaged" or scope == "untracked"
+end
+
+---True when the file has no unstaged changes, so the index content a `staged`
+---comment refers to is also what the working-tree file holds.
+---@param root string
+---@param file string
+---@param cache table<string, boolean>
+---@return boolean
+local function index_matches_worktree(root, file, cache)
+  local known = cache[file]
+  if known ~= nil then
+    return known
+  end
+  vim.fn.system({ "git", "-C", root, "diff", "--quiet", "--", file })
+  local clean = vim.v.shell_error == 0
+  cache[file] = clean
+  return clean
+end
+
 ---Sidekick text chunks for a comment's position, or nil when the plain form has
 ---to be used. Mentions point at the working-tree file, so old-side comments keep
----the plain form: their line is gone from it. Scoped comments keep it too: a
----staged line lives in the index, not the working tree, and only the plain form
----names the scope.
+---the plain form: their line is gone from it. A staged comment keeps it too while
+---the file has unstaged edits, since only the plain form names the index.
 ---@param Loc table `sidekick.cli.context.location`
 ---@param comment ReviewerComment
 ---@param root string repository root
+---@param clean table<string, boolean> per-send cache for the index check
 ---@return sidekick.Text|nil
-local function mention(Loc, comment, root)
-  -- A scoped comment is about the index or a commit, not the working tree, so a
-  -- file reference would point at the wrong bytes. File-level comments too: the
-  -- guard runs before the `line == 0` short path.
-  if (comment.side or "new") == "old" or (comment.scope and comment.scope ~= "") then
+local function mention(Loc, comment, root, clean)
+  if (comment.side or "new") == "old" then
     return nil
+  end
+  if not in_working_tree(comment.scope) then
+    if comment.scope ~= "staged" or not index_matches_worktree(root, comment.file, clean) then
+      return nil
+    end
   end
   local path = vim.fs.joinpath(root, comment.file)
   if comment.line == 0 then
@@ -84,6 +112,7 @@ end
 local function payload_text(all)
   local root = store.root()
   local ok, Loc = pcall(require, "sidekick.cli.context.location")
+  local clean = {}
 
   local lines = { { { header(all) } }, {} }
   for i, comment in ipairs(all) do
@@ -92,7 +121,7 @@ local function payload_text(all)
     -- must degrade to the plain form, not raise out of `to_sidekick`.
     local loc
     if ok and root then
-      local ok2, res = pcall(mention, Loc, comment, root)
+      local ok2, res = pcall(mention, Loc, comment, root, clean)
       loc = ok2 and res or nil
     end
     if loc then
