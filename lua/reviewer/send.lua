@@ -27,15 +27,32 @@ end
 local function header(all)
   for _, comment in ipairs(all) do
     if (comment.side or "new") == "old" then
-      return "Code review comments on the current diff (`~` = old side)."
+      return "Code review comments (`~` = old side)."
     end
   end
-  return "Code review comments on the current diff."
+  return "Code review comments."
+end
+
+---Plain-text markdown payload, the form documented in the README. Sidekick gets
+---`payload_text` chunks instead, which can carry file references.
+---@param all? ReviewerComment[] defaults to the stored comments
+---@return string
+function M.generate_markdown(all)
+  all = all or store.get_all()
+  local lines = { header(all), "" }
+  for i, comment in ipairs(all) do
+    table.insert(lines, string.format("%d. `%s`", i, location.format(comment)))
+    table.insert(lines, (comment.text:gsub("\n", " ")))
+    table.insert(lines, "")
+  end
+  return table.concat(lines, "\n")
 end
 
 ---Sidekick text chunks for a comment's position, or nil when the plain form has
----to be used. Mentions point at the current file, so old-side comments keep the
----plain form: their line is gone from it.
+---to be used. Mentions point at the working-tree file, so old-side comments keep
+---the plain form: their line is gone from it. Scoped comments keep it too: a
+---staged line lives in the index, not the working tree, and only the plain form
+---names the scope.
 ---@param Loc table `sidekick.cli.context.location`
 ---@param comment ReviewerComment
 ---@param root string repository root
@@ -45,7 +62,7 @@ local function mention(Loc, comment, root)
   if comment.line == 0 then
     return Loc.get({ name = path, cwd = root })[1]
   end
-  if (comment.side or "new") == "old" then
+  if (comment.side or "new") == "old" or (comment.scope and comment.scope ~= "") then
     return nil
   end
   local last = comment.end_line or comment.line

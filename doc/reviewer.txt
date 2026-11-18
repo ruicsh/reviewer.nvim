@@ -1,4 +1,4 @@
-*reviewer.txt*  Branch-scoped review comments for codediff.nvim
+*reviewer.txt*  Branch-scoped review comments for diffs and git status
 
 ================================================================================
 CONTENTS                                                  *reviewer-contents*
@@ -6,16 +6,17 @@ CONTENTS                                                  *reviewer-contents*
 1. Introduction .................... |reviewer-introduction|
 2. Requirements .................... |reviewer-requirements|
 3. Installation .................... |reviewer-installation|
-4. Keymaps ......................... |reviewer-keymaps|
-5. Storage ......................... |reviewer-storage|
-6. Sending to sidekick ............. |reviewer-send|
+4. Review surfaces ................. |reviewer-surfaces|
+5. Keymaps ......................... |reviewer-keymaps|
+6. Storage ......................... |reviewer-storage|
+7. Sending to sidekick ............. |reviewer-send|
 
 ================================================================================
 1. INTRODUCTION                                      *reviewer-introduction*
 
 reviewer.nvim is a stripped-down, branch-scoped review layer for
-codediff.nvim. Leave inline comments on a diff, then send them all to
-sidekick.nvim in one keystroke.
+codediff.nvim and vim-fugitive. Leave inline comments on a diff, then send
+them all to sidekick.nvim in one keystroke.
 
 Features:
 - Inline comments on diff lines, with a floating input popup
@@ -28,7 +29,7 @@ Features:
 2. REQUIREMENTS                                      *reviewer-requirements*
 
 - Neovim >= 0.10
-- codediff.nvim
+- codediff.nvim and/or vim-fugitive
 - sidekick.nvim (only for sending)
 
 No other UI dependency: the comment popup is a plain floating window.
@@ -40,20 +41,22 @@ With lazy.nvim: >lua
   {
     "you/reviewer.nvim",
     dependencies = {
-      "esmuellert/codediff.nvim",
+      { "esmuellert/codediff.nvim", optional = true },
+      { "tpope/vim-fugitive", optional = true },
       { "folke/sidekick.nvim", optional = true },
     },
     event = "VeryLazy",
     opts = {},
   }
 <
-Load the plugin before you open codediff (VeryLazy or lazy = false). The keys
-are buffer-local to the codediff panes. reviewer.nvim follows the current
-codediff tab: keys, marks, and comments apply to the active tab's session.
+Load the plugin before you open a review surface (VeryLazy or lazy = false).
+The keys are buffer-local to the review buffers. reviewer.nvim follows the
+current codediff tab: keys, marks, and comments apply to the active tab's
+session.
 
 sidekick.nvim is optional and loaded on demand: it is only required when
-sending comments. The `optional = true` entry lets lazy.nvim load it when
-sending without force-loading it at startup.
+sending comments. The `optional = true` entries let lazy.nvim load a plugin
+when it is used without force-loading it at startup.
 
 Options: >lua
   opts = {
@@ -78,9 +81,39 @@ Options: >lua
 <
 
 ================================================================================
-4. KEYMAPS                                              *reviewer-keymaps*
+4. REVIEW SURFACES                                      *reviewer-surfaces*
 
-In a codediff diff: >text
+Two surfaces are supported, through a source per surface:
+
+codediff diff (both layouts) ~
+  Positions come from the codediff lifecycle: the window tells the side, the
+  session path tells the file.
+
+fugitive `:Git` status buffer ~
+  Positions come from the buffer text. A fugitive status buffer is a rendered
+  view over git: file entries, section headings, and, once you expand a hunk
+  with `>`, the real unified diff. A comment on a hunk line is stored as the
+  *file* line and side, derived from the `@@ -a,b +c,d @@` header, so it
+  survives `:Gwrite` and every status rebuild. A comment on a file entry line
+  is a file-level comment (line 0). A comment whose hunk is collapsed shows a
+  count on the file's entry line until the hunk is expanded again.
+
+  Marks are re-derived from the buffer text after every rebuild and whenever a
+  hunk is expanded or collapsed, so they never point at a stale line.
+
+  Staged, Unstaged, and Untracked are separate scopes: the same file line
+  appears in two sections with different content, so a staged comment and an
+  unstaged comment on the same line are two different comments.
+
+A source only has to map a buffer to `{ file, line, side, scope }`; the store,
+the popup, the marks, and the send payload are shared. Forge review plugins
+(octo, gitlab.nvim) are deliberately not sources: they own review-thread
+identity on the server, so a local per-branch store would desynchronize.
+
+================================================================================
+5. KEYMAPS                                              *reviewer-keymaps*
+
+In a codediff diff or a fugitive status buffer: >text
   <localleader>a   Add a comment at the cursor or range        key: add_comment
   <localleader>F   Add or edit a file-level comment           key: file_comment
   <localleader>e   Edit the comment at the cursor             key: edit_comment
@@ -93,14 +126,18 @@ In a codediff diff: >text
 <
 Set a `key` option to `false` to disable that action.
 The diff buffers stay editable: no key the plugin sets shadows a normal Vim
-editing key, so you can fix the file in the codediff pane.
+editing key, so you can fix the file in the codediff pane. In a fugitive status
+buffer `close_review` clears the comments and detaches the keys; it does not
+close the tab you opened it in.
 
 The `add_comment` key also works in visual mode: select lines, then press it to
 comment on the whole range. Ranges are line-based, so a character-wise
-selection comments every line it touches. The comment box sits under the last
-selected line and the range is highlighted with the `ReviewerRange` highlight
-group (linked to `Visual` by default). Edit and delete find a range comment
-from any line it covers.
+selection comments every line it touches. In a fugitive hunk the selection is
+mapped to file lines, and a selection spanning both sides of the diff is
+refused rather than guessed. The comment box sits under the last selected line
+and the range is highlighted with the `ReviewerRange` highlight group (linked
+to `Visual` by default). Edit and delete find a range comment from any line it
+covers.
 
 `<localleader>` is resolved when the keys are installed, that is when a
 codediff session opens, so set `vim.g.maplocalleader` before you open
@@ -109,14 +146,20 @@ codediff.
 Comment popup: |<C-s>| submits, |<Esc>| or |q| cancels.
 
 ================================================================================
-5. STORAGE                                              *reviewer-storage*
+6. STORAGE                                              *reviewer-storage*
 
 One JSON store per repository and branch, in
 `~/.local/share/nvim/reviewer/<repo>-<branch>.json`. Comments on one branch
-never show on another.
+never show on another. A codediff review and a fugitive status review of the
+same branch share the store file, but each comment is scoped to its surface,
+so a comment left on one surface does not appear on the other.
+
+A comment's identity is `file`, `line`, `side`, and `scope`. `scope` is the
+source's slice of the review: `staged`, `unstaged`, or `untracked` for a
+fugitive status buffer, empty for codediff.
 
 ================================================================================
-6. SENDING TO SIDEKICK                                    *reviewer-send*
+7. SENDING TO SIDEKICK                                    *reviewer-send*
 
 |<localleader>S| sends a markdown list. Each comment is a reference line, then its
 text on the next line, then a blank line: >text

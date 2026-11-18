@@ -8,6 +8,9 @@ local data_dir = vim.fn.stdpath("data") .. "/reviewer"
 ---@field line number start line; 0 for a file-level comment
 ---@field end_line? number last line of a multi-line comment; nil for a single line
 ---@field side "old"|"new"
+---@field scope? string source-defined slice the comment belongs to (`staged`,
+---  `unstaged`, ...). The same file and line can exist in two scopes with
+---  different content, so scope is part of a comment's identity.
 ---@field text string
 
 ---@type table<string, ReviewerComment[]>
@@ -160,8 +163,9 @@ end
 ---@param text string
 ---@param side? "old"|"new"
 ---@param end_line? number last line of a multi-line comment; nil for a single line
+---@param scope? string source-defined slice the comment belongs to
 ---@return ReviewerComment
-function M.add(file, line, text, side, end_line)
+function M.add(file, line, text, side, end_line, scope)
   M.comments[file] = M.comments[file] or {}
   id_counter = id_counter + 1
   local comment = {
@@ -170,6 +174,7 @@ function M.add(file, line, text, side, end_line)
     line = line,
     end_line = end_line and end_line > line and end_line or nil,
     side = side or "new",
+    scope = scope,
     text = text,
   }
   table.insert(M.comments[file], comment)
@@ -179,12 +184,13 @@ end
 
 ---@param file string
 ---@param side? "old"|"new"
+---@param scope? string source-defined slice; nil matches only unscoped comments
 ---@return ReviewerComment[]
-function M.get_for_file(file, side)
+function M.get_for_file(file, side, scope)
   side = side or "new"
   local out = {}
   for _, comment in ipairs(M.comments[file] or {}) do
-    if comment.line == 0 or (comment.side or "new") == side then
+    if (comment.line == 0 or (comment.side or "new") == side) and comment.scope == scope then
       table.insert(out, comment)
     end
   end
@@ -192,10 +198,11 @@ function M.get_for_file(file, side)
 end
 
 ---@param file string
+---@param scope? string source-defined slice; nil matches only unscoped comments
 ---@return ReviewerComment|nil
-function M.get_file_comment(file)
+function M.get_file_comment(file, scope)
   for _, comment in ipairs(M.comments[file] or {}) do
-    if comment.line == 0 then
+    if comment.line == 0 and comment.scope == scope then
       return comment
     end
   end
@@ -203,15 +210,18 @@ function M.get_file_comment(file)
 end
 
 ---Comment covering `line`, a multi-line comment included. That makes edit and
----delete work on any line of the range.
+---delete work on any line of the range. `scope` is part of the identity: the
+---same file line staged and unstaged are two different comments.
 ---@param file string
 ---@param line number
 ---@param side? "old"|"new"
+---@param scope? string source-defined slice; nil matches only unscoped comments
 ---@return ReviewerComment|nil
-function M.get_at_line(file, line, side)
+function M.get_at_line(file, line, side, scope)
   for _, comment in ipairs(M.comments[file] or {}) do
     if
       (comment.side or "new") == (side or "new")
+      and comment.scope == scope
       and line >= comment.line
       and line <= (comment.end_line or comment.line)
     then

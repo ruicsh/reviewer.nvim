@@ -6,6 +6,11 @@ local send = require("reviewer.send")
 ---@type table<number, string[]>
 local keymapped = {}
 
+---Buffers mapped by the last `setup_keymaps` call; the codediff session owns
+---only these, so closing or switching it never touches another source's buffer.
+---@type number[]
+local session_buffers = {}
+
 ---@param bufnr number
 local function clear_buffer(bufnr)
   local keys = keymapped[bufnr]
@@ -112,6 +117,21 @@ local function set_buffer_keymaps(bufnr)
   keymapped[bufnr] = mapped
 end
 
+---Attach the review keys to a single buffer. Sources that own one buffer (a
+---fugitive status window) use this instead of the codediff pane scan.
+---@param bufnr number
+function M.attach(bufnr)
+  if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+    set_buffer_keymaps(bufnr)
+  end
+end
+
+---Remove the review keys from one buffer.
+---@param bufnr number
+function M.detach(bufnr)
+  clear_buffer(bufnr)
+end
+
 ---@param bufnr number
 ---@return boolean
 function M.is_attached(bufnr)
@@ -127,10 +147,13 @@ function M.setup_keymaps(tabpage)
     return
   end
 
-  for bufnr in pairs(keymapped) do
+  -- Only the buffers this function mapped belong to the session. Clearing every
+  -- attached buffer would drop the keys of another source's buffer, e.g. a
+  -- fugitive status buffer in another tab.
+  for _, bufnr in ipairs(session_buffers) do
     clear_buffer(bufnr)
   end
-  keymapped = {}
+  session_buffers = {}
 
   -- Inline layout shows only the modified buffer, and the lifecycle can lag
   -- behind the windows, so map whatever the session windows display too.
@@ -151,8 +174,17 @@ function M.setup_keymaps(tabpage)
   for _, bufnr in ipairs(bufs) do
     if bufnr and vim.api.nvim_buf_is_valid(bufnr) and not keymapped[bufnr] then
       set_buffer_keymaps(bufnr)
+      table.insert(session_buffers, bufnr)
     end
   end
+end
+
+---Drop the keys of the closed codediff session, leaving other sources attached.
+function M.cleanup_session()
+  for _, bufnr in ipairs(session_buffers) do
+    clear_buffer(bufnr)
+  end
+  session_buffers = {}
 end
 
 function M.cleanup()
@@ -160,6 +192,7 @@ function M.cleanup()
     clear_buffer(bufnr)
   end
   keymapped = {}
+  session_buffers = {}
 end
 
 return M

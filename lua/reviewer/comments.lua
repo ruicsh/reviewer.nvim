@@ -1,9 +1,9 @@
 local M = {}
 
 local store = require("reviewer.store")
-local hooks = require("reviewer.hooks")
+local position = require("reviewer.position")
+local sources = require("reviewer.sources")
 local popup = require("reviewer.popup")
-local marks = require("reviewer.marks")
 local location = require("reviewer.location")
 
 ---@param msg string
@@ -12,46 +12,55 @@ local function notify(msg, level)
   vim.notify(msg, level, { title = "reviewer.nvim" })
 end
 
-local function refresh_marks()
+---Refresh the marks of the source the comment was created in. The popup closes
+---before the callback runs, so resolve the source and its buffer up front.
+---@param source ReviewerSource|nil
+---@param bufnr number
+local function refresh_marks(source, bufnr)
   vim.schedule(function()
-    marks.refresh()
+    if source then
+      source.refresh(bufnr)
+    end
   end)
 end
 
----Comment at the cursor, or the file-level comment when on line 1.
+---Comment at the cursor, or the file-level comment when the cursor is on the
+---file's anchor: line 1 in codediff, the file entry in a fugitive buffer.
 ---@return table|nil
 local function comment_at_cursor()
-  local file, line, side = hooks.get_cursor_position()
-  if not file or not line then
+  local pos = position.get()
+  if not pos then
     return nil
   end
-  local comment = store.get_at_line(file, line, side)
-  if not comment and line == 1 then
-    comment = store.get_file_comment(file)
+  local comment = store.get_at_line(pos.file, pos.line, pos.side, pos.scope)
+  if not comment and pos.at_file_anchor then
+    comment = store.get_file_comment(pos.file, pos.scope)
   end
   return comment
 end
 
 function M.add_at_cursor()
-  local file, line, side = hooks.get_cursor_position()
-  if not file or not line then
+  local source = sources.resolve()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local pos = position.get()
+  if not pos then
     notify("Could not determine cursor position", vim.log.levels.WARN)
     return
   end
 
-  if store.get_at_line(file, line, side) then
+  if pos.line > 0 and store.get_at_line(pos.file, pos.line, pos.side, pos.scope) then
     notify("Comment already exists at this line", vim.log.levels.WARN)
     return
   end
-  if line == 1 and store.get_file_comment(file) then
+  if pos.at_file_anchor and store.get_file_comment(pos.file, pos.scope) then
     notify("File comment already exists; use F to edit it", vim.log.levels.WARN)
     return
   end
 
   popup.open(nil, function(text)
     if text then
-      store.add(file, line, text, side)
-      refresh_marks()
+      store.add(pos.file, pos.line, text, pos.side, nil, pos.scope)
+      refresh_marks(source, bufnr)
       notify("Comment added", vim.log.levels.INFO)
     end
   end)
@@ -74,22 +83,40 @@ function M._visual_range()
   return math.min(start_line, end_line), math.max(start_line, end_line)
 end
 
----Comment on the visual selection, stored as its first and last line.
+---Comment on the visual selection, stored as its first and last line. A source
+---that can map the selection to file lines (a fugitive hunk) reports them, so
+---buffer rows never leak into the store.
 function M.add_range()
-  local file, _, side = hooks.get_cursor_position()
-  if not file then
-    notify("Could not determine cursor position", vim.log.levels.WARN)
-    return
-  end
+  local source = sources.resolve()
+  local bufnr = vim.api.nvim_get_current_buf()
 
-  local start_line, end_line = M._visual_range()
-  if not start_line or not end_line then
+  local start_row, end_row = M._visual_range()
+  if not start_row or not end_row then
     notify("No line range selected", vim.log.levels.WARN)
     return
   end
 
-  for line = start_line, end_line do
-    if store.get_at_line(file, line, side) then
+  local file, line, last, side, scope
+  local resolved = position.range(start_row, end_row)
+  if resolved then
+    file, line, last, side, scope = resolved.file, resolved.line, resolved.end_line, resolved.side, resolved.scope
+  elseif source and source.range then
+    -- The source knows how to map selections and refused this one: a selection
+    -- spanning both sides of a diff has no single file range, and buffer rows
+    -- would be stored as file lines if we fell back here.
+    notify("Selection does not map to one file range", vim.log.levels.WARN)
+    return
+  else
+    local pos = position.get()
+    if not pos then
+      notify("Could not determine cursor position", vim.log.levels.WARN)
+      return
+    end
+    file, line, last, side, scope = pos.file, start_row, end_row, pos.side, pos.scope
+  end
+
+  for lnum = line, last do
+    if store.get_at_line(file, lnum, side, scope) then
       notify("Comment already exists in this range", vim.log.levels.WARN)
       return
     end
@@ -97,10 +124,10 @@ function M.add_range()
 
   popup.open(nil, function(text)
     if text then
-      store.add(file, start_line, text, side, end_line)
-      refresh_marks()
-      if end_line > start_line then
-        notify(string.format("Comment added on lines %d-%d", start_line, end_line), vim.log.levels.INFO)
+      store.add(file, line, text, side, last, scope)
+      refresh_marks(source, bufnr)
+      if last > line then
+        notify(string.format("Comment added on lines %d-%d", line, last), vim.log.levels.INFO)
       else
         notify("Comment added", vim.log.levels.INFO)
       end
@@ -109,26 +136,28 @@ function M.add_range()
 end
 
 function M.file_comment()
-  local file = hooks.get_cursor_position()
-  if not file then
+  local source = sources.resolve()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local pos = position.get()
+  if not pos then
     notify("Could not determine file", vim.log.levels.WARN)
     return
   end
 
-  local existing = store.get_file_comment(file)
+  local existing = store.get_file_comment(pos.file, pos.scope)
   if existing then
     popup.open(existing.text, function(text)
       if text then
         store.update(existing.id, text)
-        refresh_marks()
+        refresh_marks(source, bufnr)
         notify("File comment updated", vim.log.levels.INFO)
       end
     end)
   else
     popup.open(nil, function(text)
       if text then
-        store.add(file, 0, text)
-        refresh_marks()
+        store.add(pos.file, 0, text, nil, nil, pos.scope)
+        refresh_marks(source, bufnr)
         notify("File comment added", vim.log.levels.INFO)
       end
     end)
@@ -136,6 +165,8 @@ function M.file_comment()
 end
 
 function M.edit_at_cursor()
+  local source = sources.resolve()
+  local bufnr = vim.api.nvim_get_current_buf()
   local comment = comment_at_cursor()
   if not comment then
     notify("No comment at cursor position", vim.log.levels.WARN)
@@ -145,13 +176,15 @@ function M.edit_at_cursor()
   popup.open(comment.text, function(text)
     if text then
       store.update(comment.id, text)
-      refresh_marks()
+      refresh_marks(source, bufnr)
       notify("Comment updated", vim.log.levels.INFO)
     end
   end)
 end
 
 function M.delete_at_cursor()
+  local source = sources.resolve()
+  local bufnr = vim.api.nvim_get_current_buf()
   local comment = comment_at_cursor()
   if not comment then
     notify("No comment at cursor position", vim.log.levels.WARN)
@@ -161,25 +194,29 @@ function M.delete_at_cursor()
   vim.ui.select({ "Yes", "No" }, { prompt = "Delete this comment?" }, function(choice)
     if choice == "Yes" then
       store.delete(comment.id)
-      refresh_marks()
+      refresh_marks(source, bufnr)
       notify("Comment deleted", vim.log.levels.INFO)
     end
   end)
 end
 
 function M.goto_next()
-  local file, line, side = hooks.get_cursor_position()
-  if not file or not line then
+  local source = sources.resolve()
+  local pos = position.get()
+  if not pos then
     return
   end
 
-  local comments = store.get_for_file(file, side)
+  local comments = store.get_for_file(pos.file, pos.side, pos.scope)
   table.sort(comments, function(a, b)
     return a.line < b.line
   end)
   for _, comment in ipairs(comments) do
-    if comment.line > line then
-      vim.api.nvim_win_set_cursor(0, { comment.line, 0 })
+    if comment.line > pos.line then
+      local row = source and source.row and source.row(comment) or comment.line
+      if row then
+        vim.api.nvim_win_set_cursor(0, { row, 0 })
+      end
       return
     end
   end
@@ -187,19 +224,23 @@ function M.goto_next()
 end
 
 function M.goto_prev()
-  local file, line, side = hooks.get_cursor_position()
-  if not file or not line then
+  local source = sources.resolve()
+  local pos = position.get()
+  if not pos then
     return
   end
 
-  local comments = store.get_for_file(file, side)
+  local comments = store.get_for_file(pos.file, pos.side, pos.scope)
   table.sort(comments, function(a, b)
     return a.line < b.line
   end)
   for i = #comments, 1, -1 do
     local comment = comments[i]
-    if comment.line > 0 and comment.line < line then
-      vim.api.nvim_win_set_cursor(0, { comment.line, 0 })
+    if comment.line > 0 and comment.line < pos.line then
+      local row = source and source.row and source.row(comment) or comment.line
+      if row then
+        vim.api.nvim_win_set_cursor(0, { row, 0 })
+      end
       return
     end
   end
@@ -208,41 +249,9 @@ end
 
 ---@param comment ReviewerComment
 function M.jump_to(comment)
-  local tabpage = vim.api.nvim_get_current_tabpage()
-  local target_line = comment.line == 0 and 1 or comment.line
-  local explorer = hooks.get_explorer(tabpage)
-
-  if not explorer then
-    vim.defer_fn(function()
-      pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
-    end, 0)
-    return
+  if not sources.jump(comment) then
+    notify("Could not find a review buffer for " .. comment.file, vim.log.levels.WARN)
   end
-
-  local file_data
-  local ok = pcall(function()
-    for _, entry in ipairs(require("codediff.ui.explorer.tree").get_all_files(explorer.tree)) do
-      if entry.data.path == comment.file then
-        file_data = entry.data
-        break
-      end
-    end
-  end)
-  if not ok or not file_data then
-    notify("Not in this review's file list: " .. comment.file, vim.log.levels.WARN)
-    return
-  end
-
-  explorer.on_file_select(file_data)
-  vim.defer_fn(function()
-    local lifecycle = require("codediff.ui.lifecycle")
-    local orig_win, mod_win = lifecycle.get_windows(vim.api.nvim_get_current_tabpage())
-    local win = (comment.side or "new") == "old" and orig_win or mod_win
-    if win and vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_set_current_win(win)
-    end
-    pcall(vim.api.nvim_win_set_cursor, 0, { target_line, 0 })
-  end, 100)
 end
 
 function M.list()

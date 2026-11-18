@@ -102,6 +102,65 @@ function M.refresh()
   end
 end
 
+---Render comments on a fugitive status buffer. Positions are re-derived from
+---the buffer text on every refresh, so a rebuilt or re-expanded status buffer
+---keeps its marks; a comment whose hunk is collapsed shows a count on the
+---file's entry line instead of vanishing.
+---@param bufnr number
+---@param lines? string[] buffer lines, already fetched by the caller
+---@param runs? { comment: ReviewerComment, row: number, last_row: number }[]
+---@param hidden? table<number, number>
+function M.render_fugitive(bufnr, lines, runs, hidden)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
+
+  if not lines then
+    lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  end
+  if not runs then
+    runs, hidden = require("reviewer.sources.fugitive").positions(lines, store.get_all())
+  end
+
+  local signed = {}
+  for _, run in ipairs(runs) do
+    local virt_lines = build_box(run.comment.text)
+    -- A file comment and collapsed line comments both land on the entry row, so
+    -- carry the hidden count below the box instead of losing it to the visible
+    -- sign (two signs cannot share a row).
+    local hidden_here = hidden[run.row]
+    if hidden_here then
+      table.insert(virt_lines, { { string.format("  (%d in a collapsed hunk)", hidden_here), "ReviewerComment" } })
+    end
+    if run.last_row > run.row then
+      -- Highlight the covered rows, box under the last one, as codediff does.
+      pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, run.row, 0, {
+        end_row = math.min(run.last_row + 1, #lines),
+        end_col = 0,
+        hl_group = "ReviewerRange",
+        hl_eol = true,
+      })
+    end
+    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, run.last_row, 0, {
+      sign_text = "●",
+      sign_hl_group = "ReviewerComment",
+      virt_lines = virt_lines,
+      virt_lines_above = false,
+    })
+    signed[run.last_row] = true
+  end
+
+  for row, count in pairs(hidden) do
+    if not signed[row] then
+      pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_id, row, 0, {
+        sign_text = count > 9 and "9+" or tostring(count),
+        sign_hl_group = "ReviewerComment",
+      })
+    end
+  end
+end
+
 function M.clear_all()
   for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_valid(bufnr) then

@@ -274,7 +274,7 @@ function M.on_session_closed()
     pcall(vim.api.nvim_del_augroup_by_id, buf_augroup)
     buf_augroup = nil
   end
-  require("reviewer.keymaps").cleanup()
+  require("reviewer.keymaps").cleanup_session()
 end
 
 return M

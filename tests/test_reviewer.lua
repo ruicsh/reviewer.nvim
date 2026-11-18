@@ -4,12 +4,95 @@ vim.opt.rtp:append(vim.fn.getcwd())
 local store = require("reviewer.store")
 local send = require("reviewer.send")
 local location = require("reviewer.location")
+local fugitive = require("reviewer.sources.fugitive")
 
 local function eq(actual, expected, msg)
   assert(actual == expected, string.format("%s: expected %s, got %s", msg, tostring(expected), tostring(actual)))
 end
 
 local function main()
+  -- Fugitive status buffer: cursor line -> real file line, side, and scope.
+  -- Expanded hunks are the real unified diff, so the `@@` header and the
+  -- sigils are enough to derive a position.
+  local status = {
+    "Head: main", -- 1
+    "", -- 2
+    "Staged (1)", -- 3
+    "M src/a.lua", -- 4
+    "@@ -10,2 +10,3 @@", -- 5
+    " context ten", -- 6
+    "+added eleven", -- 7
+    " context twelve", -- 8
+    "@@ -20,1 +21,1 @@", -- 9
+    "-old twenty", -- 10
+    "+new twenty", -- 11
+    "", -- 12
+    "Unstaged (1)", -- 13
+    "M src/b.lua", -- 14
+    "@@ -30,1 +30,1 @@", -- 15
+    "-gone", -- 16
+    "\\ No newline at end of file", -- 17
+    "+back", -- 18
+  }
+
+  local function eq_pos(lnum, file, line, side, scope)
+    local p = fugitive.derive(status, lnum)
+    assert(p, "no position at status line " .. lnum)
+    eq(p.file, file, "file at status line " .. lnum)
+    eq(p.line, line, "file line at status line " .. lnum)
+    eq(p.side, side, "side at status line " .. lnum)
+    eq(p.scope, scope, "scope at status line " .. lnum)
+  end
+
+  local function eq_nil_pos(lnum)
+    eq(fugitive.derive(status, lnum), nil, "no position at status line " .. lnum)
+  end
+
+  eq_pos(6, "src/a.lua", 10, "new", "staged")
+  eq_pos(7, "src/a.lua", 11, "new", "staged")
+  -- Context lines advance both sides: old 10..11, new 10..12.
+  eq_pos(8, "src/a.lua", 12, "new", "staged")
+  eq_pos(10, "src/a.lua", 20, "old", "staged")
+  eq_pos(11, "src/a.lua", 21, "new", "staged")
+  eq_pos(4, "src/a.lua", 0, "new", "staged")
+  eq_pos(14, "src/b.lua", 0, "new", "unstaged")
+  -- A `\ No newline` marker belongs to no line, and the line after it still
+  -- resolves: old 30 was consumed by the deletion only.
+  eq_nil_pos(17)
+  eq_pos(18, "src/b.lua", 30, "new", "unstaged")
+  -- Headers, headings, blanks, and the head summary are not comment targets.
+  eq_nil_pos(5)
+  eq_nil_pos(3)
+  eq_nil_pos(12)
+  eq_nil_pos(1)
+  -- A hunk with no file entry above it is not part of the status list.
+  eq(fugitive.derive({ "@@ -1,1 +1,1 @@", "+orphan" }, 2), nil, "hunk without a file entry")
+
+  -- A file entry is the file-comment anchor; a hunk line, even one that maps
+  -- to file line 1, is a line comment. This keeps `a` on fugitive line 1 from
+  -- colliding with the file comment.
+  eq(fugitive.derive(status, 4).at_file_anchor, true, "file entry is the file-comment anchor")
+  eq(
+    fugitive.derive({ "Staged (1)", "M src/a.lua", "@@ -1,1 +1,1 @@", "+first" }, 4).at_file_anchor,
+    nil,
+    "file line 1 is not the file-comment anchor"
+  )
+
+  -- codediff's first buffer row is both file line 1 and the file-comment anchor,
+  -- so only there does `a` consult the file comment.
+  local codediff_source = require("reviewer.sources.codediff")
+  local hook_mod = require("reviewer.hooks")
+  local orig_get_cursor = hook_mod.get_cursor_position
+  hook_mod.get_cursor_position = function()
+    return "src/a.lua", 1, "new"
+  end
+  eq(codediff_source.position(0).at_file_anchor, true, "codediff line 1 is a file-comment anchor")
+  hook_mod.get_cursor_position = function()
+    return "src/a.lua", 2, "new"
+  end
+  eq(codediff_source.position(0).at_file_anchor, false, "codediff line 2 is not a file-comment anchor")
+  hook_mod.get_cursor_position = orig_get_cursor
+
   -- A throwaway repo so the store has a real branch and root to key off.
   local repo = vim.fn.tempname()
   vim.fn.mkdir(repo, "p")
@@ -83,6 +166,115 @@ local function main()
   eq(box_found, true, "comment box under the last line")
   eq(highlight_found, true, "range highlight covers the selected lines")
 
+  -- Scoped comments: the same file line staged and unstaged are two different
+  -- comments, and the location names the scope.
+  local staged = store.add("src/a.lua", 50, "staged note", "new", nil, "staged")
+  local unstaged = store.add("src/a.lua", 50, "unstaged note", "new", nil, "unstaged")
+  eq(store.get_at_line("src/a.lua", 50, "new", "staged").text, "staged note", "staged comment is addressable")
+  eq(store.get_at_line("src/a.lua", 50, "new", "unstaged").text, "unstaged note", "unstaged comment is addressable")
+  eq(store.get_at_line("src/a.lua", 50, "new"), nil, "unscoped lookup ignores scoped comments")
+  eq(location.format(staged), "src/a.lua:50 (staged)", "scope is part of the location")
+  eq(location.format(unstaged), "src/a.lua:50 (unstaged)", "each scope keeps its own location")
+  assert(send.generate_markdown():find("src/a.lua:50 (staged)", 1, true), "scope in the payload")
+  store.delete(staged.id)
+  store.delete(unstaged.id)
+
+  -- A fugitive status buffer: positions are derived from the buffer text, so a
+  -- comment lands on its hunk line, and a collapsed hunk keeps its count on the
+  -- file's entry line instead of disappearing.
+  local fug_comments = {
+    { id = "a", file = "src/a.lua", line = 11, side = "new", scope = "staged", text = "added" },
+    { id = "b", file = "src/a.lua", line = 20, side = "old", scope = "staged", text = "removed" },
+    { id = "c", file = "src/b.lua", line = 0, side = "new", scope = "unstaged", text = "file note" },
+    { id = "d", file = "src/a.lua", line = 40, side = "new", scope = "staged", text = "collapsed" },
+    { id = "e", file = "src/a.lua", line = 10, side = "new", scope = "staged", text = "ranged", end_line = 12 },
+  }
+  local runs, hidden = fugitive.positions(status, fug_comments)
+  local by_id = {}
+  for _, run in ipairs(runs) do
+    by_id[run.comment.id] = run
+  end
+  eq(by_id.a.row, 6, "comment box on the added line")
+  eq(by_id.b.row, 9, "old-side comment box on the removed line")
+  eq(by_id.c.row, 13, "file comment box on the entry line")
+  eq(by_id.e.row, 5, "range starts on its first visible line")
+  eq(by_id.e.last_row, 7, "range ends on its last visible line")
+  eq(hidden[3], 1, "collapsed hunk counts on the file entry")
+  eq(hidden[13], nil, "a visible file comment is not counted as hidden")
+
+  -- A selection maps to file lines only when every selected row shares one
+  -- file, scope, and side.
+  local range_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(range_buf, 0, -1, false, status)
+  local restore_buf = vim.api.nvim_get_current_buf()
+  vim.api.nvim_set_current_buf(range_buf)
+  local within = fugitive.range(6, 8)
+  eq(within and within.file, "src/a.lua", "range file")
+  eq(within and within.line, 10, "range starts at the first new-side line")
+  eq(within and within.end_line, 12, "range ends at the last new-side line")
+  eq(within and within.side, "new", "range side")
+  eq(within and within.scope, "staged", "range scope")
+  eq(fugitive.range(10, 11), nil, "a range over both sides is refused")
+  eq(fugitive.range(5, 8), nil, "a range over a hunk header is refused")
+  eq(fugitive.range(14, 14), nil, "a range on a file entry line is refused")
+  vim.api.nvim_set_current_buf(restore_buf)
+  vim.api.nvim_buf_delete(range_buf, { force = true })
+
+  -- Render it: the box goes on the derived row, not on a stored buffer line.
+  local prev_buf = vim.api.nvim_get_current_buf()
+  local fug_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(fug_buf, 0, -1, false, status)
+  vim.bo[fug_buf].filetype = "fugitive"
+  vim.b[fug_buf].fugitive_type = "index"
+
+  local hunk_comment = store.add("src/a.lua", 11, "on the hunk", "new", nil, "staged")
+  marks.render_fugitive(fug_buf)
+  local fug_box = false
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(fug_buf, ns, 0, -1, { details = true })) do
+    if mark[2] == 6 and mark[4].virt_lines then
+      fug_box = true
+    end
+  end
+  eq(fug_box, true, "comment box on the hunk line")
+  store.delete(hunk_comment.id)
+
+  -- A file comment and a collapsed line comment share the file's entry row: the
+  -- box stays, and the hidden count rides along instead of losing its sign to
+  -- the visible one.
+  local file_comment = store.add("src/a.lua", 0, "file note", "new", nil, "staged")
+  local collapsed_comment = store.add("src/a.lua", 40, "collapsed", "new", nil, "staged")
+  marks.render_fugitive(fug_buf)
+  local entry_box, entry_count = false, false
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(fug_buf, ns, 0, -1, { details = true })) do
+    if mark[2] == 3 and mark[4].virt_lines then
+      entry_box = true
+      for _, virt_line in ipairs(mark[4].virt_lines) do
+        if virt_line[1] and virt_line[1][1]:find("in a collapsed hunk", 1, true) then
+          entry_count = true
+        end
+      end
+    end
+  end
+  eq(entry_box, true, "file comment box on the entry line")
+  eq(entry_count, true, "collapsed count rides along with the file comment")
+  store.delete(file_comment.id)
+  store.delete(collapsed_comment.id)
+
+  -- The status buffer resolves to its own source, and the cursor maps back to a
+  -- real file line with a scope.
+  vim.api.nvim_set_current_buf(fug_buf)
+  vim.api.nvim_win_set_cursor(0, { 7, 0 })
+  local resolved = require("reviewer.sources").resolve()
+  eq(resolved and resolved.name, "fugitive", "status buffer resolves to the fugitive source")
+  local fug_pos = require("reviewer.position").get()
+  eq(fug_pos.file, "src/a.lua", "file derived from the status buffer")
+  eq(fug_pos.line, 11, "file line derived from the status buffer")
+  eq(fug_pos.side, "new", "side derived from the sigil")
+  eq(fug_pos.scope, "staged", "scope derived from the section heading")
+
+  vim.api.nvim_set_current_buf(prev_buf)
+  vim.api.nvim_buf_delete(fug_buf, { force = true })
+
   local files = vim.fn.glob(vim.fn.stdpath("data") .. "/reviewer/*feature-x.json", false, true)
   eq(#files, 1, "one branch-scoped store file")
 
@@ -152,6 +344,15 @@ local function main()
   assert(sent:find("@" .. root .. "/src/b.lua\nwhole file\n\n", 1, true), "file comment references the whole file")
   assert(sent:find("`src/c.lua:~2`", 1, true), "old-side comments keep the plain form")
   assert(sent:find("`~` = old side", 1, true), "chunk header explains old-side comments")
+
+  -- A scoped comment keeps the plain form even with location context: a staged
+  -- line lives in the index, not the working tree, and only the plain form
+  -- names the scope.
+  local calls_before = #calls
+  store.add("src/a.lua", 7, "scoped", "new", nil, "staged")
+  send.to_sidekick()
+  assert(sent:find("`src/a.lua:7 (staged)`", 1, true), "scoped comment keeps its scope in the payload")
+  eq(#calls, calls_before, "a scoped comment is not made into a working-tree reference")
   package.loaded["sidekick.cli.context.location"] = nil
 
   -- Without a configured tool, sidekick picks its own.
@@ -206,6 +407,28 @@ local function main()
   keymaps.setup({ edit_comment = "" })
   keymaps.setup_keymaps(0)
   eq(has_map((vim.g.maplocalleader or "\\") .. "e"), false, "empty key is not mapped")
+
+  -- A buffer attached by another source keeps its keys when a codediff session
+  -- switches files or closes: only the session's own buffers are torn down.
+  local other_buf = vim.api.nvim_create_buf(false, true)
+  local function has_map_buf(bufnr, lhs)
+    for _, m in ipairs(vim.api.nvim_buf_get_keymap(bufnr, "n")) do
+      if m.lhs == lhs then
+        return true
+      end
+    end
+    return false
+  end
+  local add_key = (vim.g.maplocalleader or "\\") .. "a"
+  keymaps.attach(other_buf)
+  eq(has_map_buf(other_buf, add_key), true, "attach maps a single buffer")
+  keymaps.setup_keymaps(0)
+  eq(has_map_buf(other_buf, add_key), true, "a session switch keeps another source's keys")
+  keymaps.cleanup_session()
+  eq(has_map_buf(other_buf, add_key), true, "a session close keeps another source's keys")
+  keymaps.cleanup()
+  eq(has_map_buf(other_buf, add_key), false, "cleanup drops every attachment")
+  vim.api.nvim_buf_delete(other_buf, { force = true })
 
   keymaps.cleanup()
   package.loaded["codediff.ui.lifecycle"] = nil
@@ -336,7 +559,7 @@ local function main()
   vim.fn.delete(neutral, "rf")
 end
 
-local ok, err = pcall(main)
+local ok, err = xpcall(main, debug.traceback)
 if not ok then
   io.stderr:write("reviewer tests failed: " .. tostring(err) .. "\n")
   os.exit(1)
