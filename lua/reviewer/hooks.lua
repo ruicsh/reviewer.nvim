@@ -280,6 +280,14 @@ function M._focus_modified_pane(lifecycle, tabpage)
   if vim.api.nvim_win_get_config(vim.api.nvim_get_current_win()).relative ~= "" then
     return
   end
+  -- A visible panel (explorer or history) picks its own initial focus: the
+  -- file or commit list. Moving to the diff pane here would undo that and push
+  -- the user into the code before they have picked an entry.
+  local panel = lifecycle.get_panel_view and lifecycle.get_panel_view(tabpage)
+  local panel_win = panel and panel.winid
+  if panel_win and vim.api.nvim_win_is_valid(panel_win) and not panel.is_hidden then
+    return
+  end
   local sess = lifecycle.get_session(tabpage)
   if sess and sess.modified_win and vim.api.nvim_win_is_valid(sess.modified_win) then
     vim.api.nvim_set_current_win(sess.modified_win)

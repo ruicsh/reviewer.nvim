@@ -727,6 +727,35 @@ local function main()
   assert(payload:find("commit file note", 1, true), "scoped file comment text is sent")
   eq(store.count(), 0, "a successful send clears the comments")
 
+  -- Opening an explorer session leaves the cursor in the file list; reviewer
+  -- only moves into the diff pane when no panel owns the focus.
+  local pane = vim.api.nvim_get_current_win()
+  vim.cmd("vsplit")
+  local other = vim.api.nvim_get_current_win()
+  vim.api.nvim_set_current_win(pane)
+  local fake_lifecycle = {
+    get_panel_view = function()
+      return { winid = pane, is_hidden = false }
+    end,
+    get_session = function()
+      return { modified_win = other }
+    end,
+  }
+  hooks._focus_modified_pane(fake_lifecycle, 0)
+  eq(vim.api.nvim_get_current_win(), pane, "explorer mode keeps focus in the file list")
+  fake_lifecycle.get_panel_view = function()
+    return { winid = pane, is_hidden = true }
+  end
+  hooks._focus_modified_pane(fake_lifecycle, 0)
+  eq(vim.api.nvim_get_current_win(), other, "a hidden panel lets the diff pane take focus")
+  vim.api.nvim_set_current_win(pane)
+  fake_lifecycle.get_panel_view = function()
+    return nil
+  end
+  hooks._focus_modified_pane(fake_lifecycle, 0)
+  eq(vim.api.nvim_get_current_win(), other, "without a panel the diff pane takes focus")
+  vim.api.nvim_win_close(other, true)
+
   vim.fn.chdir(repo)
   vim.fn.delete(repo, "rf")
   vim.fn.delete(neutral, "rf")
