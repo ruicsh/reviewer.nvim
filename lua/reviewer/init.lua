@@ -5,11 +5,12 @@ local keymaps = require("reviewer.keymaps")
 local store = require("reviewer.store")
 local marks = require("reviewer.marks")
 local send = require("reviewer.send")
+local notify = require("reviewer.notify")
 
 local initialized = false
 
 ---Attach reviewer to codediff sessions and fugitive status buffers.
----@param opts? { sidekick?: { tool?: string }, keys?: ReviewerKeys } `sidekick.tool` is the sidekick tool that receives sent comments; nil keeps sidekick's current tool. `keys` overrides the buffer-local keymaps.
+---@param opts? { sidekick?: { tool?: string }, keys?: ReviewerKeys, silent?: boolean } `sidekick.tool` is the sidekick tool that receives sent comments; nil keeps sidekick's current tool. `keys` overrides the buffer-local keymaps. `silent` mutes info and warning messages; errors still show.
 function M.setup(opts)
   -- plugin/reviewer.lua calls setup() with no opts after the user's config has
   -- already called setup(opts); skip it so the user's config is not reset.
@@ -19,6 +20,7 @@ function M.setup(opts)
 
   send.setup(opts and opts.sidekick)
   keymaps.setup(opts and opts.keys)
+  notify.setup(opts)
 
   if initialized then
     return

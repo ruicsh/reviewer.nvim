@@ -7,11 +7,7 @@ local location = require("reviewer.location")
 ---@type { tool?: string }
 local opts = {}
 
----@param msg string
----@param level number
-local function notify(msg, level)
-  vim.notify(msg, level, { title = "reviewer.nvim" })
-end
+local notify = require("reviewer.notify").notify
 
 ---Configure the send target. `tool` is a sidekick tool name (e.g. `copilot`);
 ---when nil, sidekick uses whichever tool it has selected.

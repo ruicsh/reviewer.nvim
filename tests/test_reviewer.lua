@@ -648,6 +648,25 @@ local function main()
   package.preload["codediff.core.virtual_file"] = nil
   package.loaded["codediff.ui.lifecycle"] = nil
 
+  -- Silence info and warning messages; errors still show so a failed send is
+  -- never invisible.
+  local reporter = require("reviewer.notify")
+  local seen = {}
+  local prev_notify = vim.notify
+  vim.notify = function(msg, level)
+    table.insert(seen, { msg = msg, level = level })
+  end
+  reporter.setup({ silent = true })
+  reporter.notify("info", vim.log.levels.INFO)
+  reporter.notify("warn", vim.log.levels.WARN)
+  reporter.notify("error", vim.log.levels.ERROR)
+  eq(#seen, 1, "silent keeps only errors")
+  eq(seen[1].level, vim.log.levels.ERROR, "the surviving message is the error")
+  reporter.setup({})
+  reporter.notify("back", vim.log.levels.INFO)
+  eq(#seen, 2, "notifications resume once silent is off")
+  vim.notify = prev_notify
+
   -- A failing send must keep the comments.
   store.add("src/a.lua", 5, "keep me")
   package.loaded["sidekick.cli"] = {

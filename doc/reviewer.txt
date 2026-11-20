@@ -64,6 +64,9 @@ Options: >lua
       -- sidekick tool that receives the comments; nil = sidekick's current tool
       tool = "copilot",
     },
+    -- Mute the "comment added" style messages and warnings. Errors still show,
+    -- so a failed send is never silent.
+    silent = false,
     -- Keys are buffer-local to the codediff panes. Omit a key to keep its
     -- default; set it to false to disable that action.
     keys = {

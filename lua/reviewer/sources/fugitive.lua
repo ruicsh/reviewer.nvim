@@ -354,9 +354,10 @@ function M.jump(comment)
           pcall(vim.api.nvim_win_set_cursor, 0, { row, 0 })
           local pos = M.derive(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), row)
           if pos and pos.line == 0 then
-            vim.notify("Hunk is collapsed: expand it with `>` to see the comment line", vim.log.levels.INFO, {
-              title = "reviewer.nvim",
-            })
+            require("reviewer.notify").notify(
+              "Hunk is collapsed: expand it with `>` to see the comment line",
+              vim.log.levels.INFO
+            )
           end
           return true
         end

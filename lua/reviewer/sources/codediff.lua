@@ -3,11 +3,7 @@ local M = { name = "codediff" }
 local hooks = require("reviewer.hooks")
 local marks = require("reviewer.marks")
 
----@param msg string
----@param level number
-local function notify(msg, level)
-  vim.notify(msg, level, { title = "reviewer.nvim" })
-end
+local notify = require("reviewer.notify").notify
 
 ---codediff sessions are tab-scoped, and its lifecycle is the only place that
 ---knows which buffers the current tab shows.

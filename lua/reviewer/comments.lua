@@ -6,11 +6,7 @@ local sources = require("reviewer.sources")
 local popup = require("reviewer.popup")
 local location = require("reviewer.location")
 
----@param msg string
----@param level number
-local function notify(msg, level)
-  vim.notify(msg, level, { title = "reviewer.nvim" })
-end
+local notify = require("reviewer.notify").notify
 
 ---Refresh the marks of the source the comment was created in. The popup closes
 ---before the callback runs, so resolve the source and its buffer up front.
