@@ -1,6 +1,6 @@
 # reviewer.nvim
 
-A stripped-down, branch-scoped review layer for [codediff.nvim](https://github.com/esmuellert/codediff.nvim) and [fugitive](https://github.com/tpope/vim-fugitive). Leave inline comments on a diff, then send them all to [sidekick.nvim](https://github.com/folke/sidekick.nvim) in one keystroke.
+Branch-scoped review layer for [codediff.nvim](https://github.com/esmuellert/codediff.nvim) and [fugitive](https://github.com/tpope/vim-fugitive). Comment inline on a diff, then send all comments to [sidekick.nvim](https://github.com/folke/sidekick.nvim) with one key.
 
 ![Commenting on a codediff hunk and on a line range, then sending both comments to the sidekick agent pane](assets/demo.gif)
 
@@ -8,11 +8,9 @@ A stripped-down, branch-scoped review layer for [codediff.nvim](https://github.c
 
 - Neovim >= 0.10
 - [codediff.nvim](https://github.com/esmuellert/codediff.nvim) and/or [vim-fugitive](https://github.com/tpope/vim-fugitive)
-- [sidekick.nvim](https://github.com/folke/sidekick.nvim) (only for sending comments)
+- [sidekick.nvim](https://github.com/folke/sidekick.nvim) (send only)
 
 ## Install
-
-With lazy.nvim:
 
 ```lua
 {
@@ -27,9 +25,7 @@ With lazy.nvim:
 }
 ```
 
-Load the plugin before you open a review surface (`VeryLazy` or `lazy = false`). The keys are buffer-local to the review buffers, so they only work once the plugin is loaded. reviewer.nvim follows the current codediff tab: keys, marks, and comments apply to the active tab's session.
-
-sidekick.nvim is optional and loaded on demand: it is only required when you send comments. The `optional = true` entries let lazy.nvim load a plugin when it is used without force-loading it at startup.
+Load the plugin before opening a review surface (`VeryLazy` or `lazy = false`); keys are buffer-local. reviewer.nvim follows the current codediff tab. sidekick.nvim loads on demand and is only needed to send.
 
 ## Review surfaces
 
@@ -38,13 +34,13 @@ sidekick.nvim is optional and loaded on demand: it is only required when you sen
 | codediff diff (both layouts)  | the codediff lifecycle: window → side, path → file |
 | fugitive `:Git` status buffer | the buffer text: `@@` headers and sigils           |
 
-A fugitive status buffer is a rendered view over git: file entries, section headings, and, once you expand a hunk with `>`, the real unified diff. A comment on a hunk line is stored as the _file_ line and side, derived from the `@@ -a,b +c,d @@` header, so it survives refreshes and `:Gwrite`. A comment on a file entry line is a file-level comment (line 0). A comment whose hunk is collapsed shows a count on the file's entry line until you expand it again.
+A fugitive status buffer renders git: file entries, section headings, and, after `>` expands a hunk, the unified diff. A hunk-line comment is stored as the *file* line and side from the `@@ -a,b +c,d @@` header. A file-entry comment is file-level (line 0). A comment in a collapsed hunk shows a count until expanded.
 
-The status buffer is rebuilt whenever the index changes. Marks are re-derived from the buffer text after every rebuild and whenever a hunk is expanded or collapsed, so they never point at a stale line.
+The status buffer is rebuilt whenever the index changes; marks are re-derived after every rebuild and on expand/collapse.
 
-Staged and unstaged are separate scopes: the same file line appears in both sections with different content, so a staged comment and an unstaged comment on the same line are two different comments. The scope is part of the sent location (`src/api.ts:12 (staged)`), so the agent knows to read the index rather than the working tree.
+Staged and unstaged are separate scopes: the same line appears in both with different content, so they are two comments. The scope is part of the sent location (`src/api.ts:12 (staged)`), so the agent reads the index, not the working tree.
 
-codediff gets the same treatment when its panes do not show the working tree. A comment on a staged file is `staged`; a comment on a commit from the history panel is `commit:abc1234`; a comparison of two revisions is `rev:abc1234..def5678`; a conflict side is `conflict:2`. A comment on a working-tree diff stays unscoped. Without this, a comment on a commit and a comment on the same line of the working tree would look identical in the payload and the agent would read the wrong bytes.
+codediff panes that do not show the working tree get the same treatment: `staged`, `commit:abc1234`, `rev:abc1234..def5678`, `conflict:2`. A working-tree diff stays unscoped.
 
 ## Options
 
@@ -73,7 +69,7 @@ opts = {
 }
 ```
 
-## Keys (in a codediff diff or a fugitive status buffer)
+## Keys
 
 | Key              | Option           | Action                                                       |
 | ---------------- | ---------------- | ------------------------------------------------------------ |
@@ -87,36 +83,23 @@ opts = {
 | `<localleader>S` | `send_comments`  | Send all comments to sidekick, then clear them               |
 | `<localleader>q` | `close_review`   | Clear comments and close the review tab                      |
 
-The diff buffers stay editable: no key the plugin sets shadows a normal Vim
-editing key, so you can fix the file in the codediff pane. In a fugitive status
-buffer `close_review` clears the comments and detaches the keys; it does not
-close the tab you opened it in.
+Diff buffers stay editable: no plugin key shadows a normal Vim editing key. In a fugitive status buffer `close_review` clears comments and detaches keys without closing the tab.
 
-`add_comment` works in visual mode too: select lines, then press
-`<localleader>a` to comment on the whole range. Ranges are line-based, so a
-character-wise selection comments every line it touches. In a fugitive hunk the
-selection is mapped to file lines, and a selection that spans both sides of the
-diff is refused rather than guessed. The comment box sits under the last
-selected line and the range is highlighted with `ReviewerRange` (linked to
-`Visual` by default). Edit and delete find a range comment from any line it
-covers.
+`add_comment` works in visual mode: select lines, press `<localleader>a`. Ranges are line-based; a character-wise selection comments every line it touches. In a fugitive hunk the selection maps to file lines; a selection spanning both sides is refused, not guessed. The box sits under the last selected line; the range is highlighted with `ReviewerRange` (linked to `Visual`). Edit and delete find a range comment from any line it covers.
 
-`<localleader>` is resolved when the keys are installed, that is when a
-codediff session opens, so set `vim.g.maplocalleader` before you open codediff.
-
-Comment popup: `<C-s>` submits, `<Esc>` or `q` cancels.
+`<localleader>` is resolved when keys are installed (codediff session open), so set `vim.g.maplocalleader` before opening codediff. Popup: `<C-s>` submits, `<Esc>` or `q` cancels.
 
 ## Storage
 
-One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo>-<branch>.json`. Comments on one branch never show on another. A codediff review and a fugitive status review of the same branch share the store file.
+One JSON store per repo and branch: `~/.local/share/nvim/reviewer/<repo>-<branch>.json`. Branches never share comments. A codediff and a fugitive review of the same branch share the file.
 
-A comment's identity is `file`, `line`, `side`, and `scope`. `scope` names the slice of the repository the comment is about: the working tree (empty), `staged`, `unstaged`, or `untracked` in a fugitive status buffer, and `staged`, `conflict:2`, `commit:abc1234`, or `rev:abc1234..def5678` in codediff. Comments are therefore isolated by content, not by surface: a staged line commented in a fugitive status buffer and the same index line commented in codediff are one comment, while a working-tree comment and a commit comment on the same file line are two.
+Identity is `file`, `line`, `side`, `scope`. `scope` names the slice: working tree (empty), `staged`, `unstaged`, `untracked` in fugitive; `staged`, `conflict:2`, `commit:abc1234`, `rev:abc1234..def5678` in codediff. Comments are isolated by content, not surface: a staged line commented in fugitive and the same index line in codediff are one comment; a working-tree and a commit comment on the same line are two.
 
-Each comment also records the text of its first line and the short HEAD it was written at. Before sending, reviewer.nvim compares that text with the same slice; if the line changed, it names the affected comment and asks whether to send anyway, since the line numbers may now point at different code. Old-side and revision comments carry no excerpt, because their content has no file to read back at that path.
+Each comment records its first line's text and the short HEAD at write time. Before sending, reviewer.nvim compares it against the same slice and prompts if the line changed. Old-side and revision comments carry no excerpt.
 
 ## Send format
 
-`<localleader>S` sends a markdown list. The header names the state the line numbers refer to, then each comment is a reference line, its text, the reviewed code as a quote, and a blank line:
+`<localleader>S` sends a markdown list: a header naming the state, then each comment's reference line, text, quoted code, and a blank line.
 
 ```
 Code review comments (`~` = old side).
@@ -138,9 +121,9 @@ this block duplicates the retry logic
 
 ```
 
-A `~` before the line number marks the old (left) side of the diff; the header only mentions it when such a comment is present. Inline diffs never produce one, since the original pane is not shown. A bare path is a file-level comment. `start-end` is a multi-line comment. Comment text is flattened to one line. After sending, all comments and their inline marks are removed.
+`~` marks the old (left) side; the header mentions it only when present. Inline diffs never produce one. A bare path is file-level. `start-end` is multi-line. Comment text is flattened to one line. After sending, comments and marks are removed.
 
-The payload is built as sidekick text, so new-side comments are sent as that tool's own file reference (`@file#L10-20` for Claude, `@file :L10-L20` elsewhere) and expand to the file. Old-side comments keep the `file:~10` form, since a reference would point at the current file where that line no longer exists. `Unstaged` and `untracked` comments keep the reference too: their content is the working tree. `Staged` comments keep it while the file has no unstaged edits, so the index and the working tree agree at that line; once the working tree moves they keep the plain form. `conflict:N`, `commit:abc1234`, and `rev:a..b` always keep the plain form, because only it names the place the line lives.
+The payload is sidekick text: new-side comments use the tool's file reference (`@file#L10-20` for Claude, `@file :L10-L20` elsewhere) and expand to the file. Old-side comments keep `file:~10`, since a reference would point at the current file where the line no longer exists. `unstaged` and `untracked` keep the reference: their content is the working tree. `staged` keeps it while the file has no unstaged edits; otherwise plain form. `conflict:N`, `commit:`, `rev:` always plain, the only form that names where the line lives.
 
 ## Tests
 
@@ -150,12 +133,10 @@ make test-fugitive  # end-to-end against a real fugitive status buffer
 make test-codediff  # end-to-end against a real codediff session
 ```
 
-`tests/test_reviewer.lua` runs headless: store CRUD, branch-scoped paths, scope isolation, fugitive position derivation, markdown shape, the stale-anchor check before send, and the clear-on-success / keep-on-failure send behavior.
-
-`tests/test_fugitive.lua` opens a real `:Git` buffer in a throwaway repo: it expands a hunk, checks that the cursor maps to the right file line and side, and that a comment's box follows the hunk through collapse, expand, and a status rebuild. It skips when vim-fugitive is not installed.
-
-`tests/test_codediff.lua` opens a real `:CodeDiff` session in a throwaway repo and checks the revision the panes actually show: `staged` for an index file, no scope for an unstaged file, `rev:` for a two-revision diff, and `commit:` for a history entry. It skips when codediff.nvim is not installed.
+- `tests/test_reviewer.lua`: store CRUD, branch-scoped paths, scope isolation, fugitive position derivation, markdown shape, stale-anchor check, clear-on-success / keep-on-failure.
+- `tests/test_fugitive.lua`: real `:Git` buffer in a throwaway repo; hunk expand, cursor-to-line/side mapping, comment box follows the hunk through collapse, expand, rebuild. Skips without vim-fugitive.
+- `tests/test_codediff.lua`: real `:CodeDiff` session in a throwaway repo; checks the revision panes show (`staged`, no scope, `rev:`, `commit:`). Skips without codediff.nvim.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+MIT license — see [LICENSE](LICENSE).
