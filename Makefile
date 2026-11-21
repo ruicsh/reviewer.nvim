@@ -1,7 +1,7 @@
 # reviewer.nvim Makefile
 # Branch-scoped review comments for codediff.nvim
 
-.PHONY: test test-file test-fugitive test-codediff lint format check help
+.PHONY: test test-file test-fugitive test-codediff lint format check demo help
 
 # Default target
 .DEFAULT_GOAL := help
@@ -45,6 +45,13 @@ test-codediff:
 	XDG_DATA_HOME=$$TMP/data nvim --headless -u NONE --noplugin -l tests/test_codediff.lua; \
 	status=$$?; rm -rf $$TMP; exit $$status
 
+# Re-record assets/demo.gif in your own Neovim config. Needs vhs, opencode and
+# the plugins the tape drives; see demo/demo.tape.
+demo:
+	@bash demo/setup.sh
+	@vhs demo/demo.tape
+	@echo "wrote assets/demo.gif"
+
 # Display help
 help:
 	@echo "reviewer.nvim - Available targets:"
@@ -56,6 +63,7 @@ help:
 	@echo "  make lint              Run luacheck linter"
 	@echo "  make format            Format code with stylua"
 	@echo "  make check             Run format, lint, tests, fugitive, codediff"
+	@echo "  make demo              Re-record the README GIF into assets/demo.gif"
 	@echo "  make help              Show this help message"
 	@echo ""
 	@echo "Examples:"
