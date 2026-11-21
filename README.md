@@ -2,6 +2,8 @@
 
 A stripped-down, branch-scoped review layer for [codediff.nvim](https://github.com/esmuellert/codediff.nvim) and [fugitive](https://github.com/tpope/vim-fugitive). Leave inline comments on a diff, then send them all to [sidekick.nvim](https://github.com/folke/sidekick.nvim) in one keystroke.
 
+![Commenting on a codediff hunk and on a line range, then sending both comments to the sidekick agent pane](assets/demo.gif)
+
 ## Requirements
 
 - Neovim >= 0.10
