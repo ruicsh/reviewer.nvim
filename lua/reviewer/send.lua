@@ -17,16 +17,112 @@ function M.setup(o)
 end
 
 ---Explain `~` only when an old-side comment is present: inline diffs cannot
----produce one, and the clause is noise there.
+---produce one, and the clause is noise there. The rest of the header names the
+---state the line numbers refer to, so the agent reads the right tree.
 ---@param all ReviewerComment[]
 ---@return string
 local function header(all)
+  local first = "Code review comments."
+  local heads, seen = {}, {}
   for _, comment in ipairs(all) do
     if (comment.side or "new") == "old" then
-      return "Code review comments (`~` = old side)."
+      first = "Code review comments (`~` = old side)."
+    end
+    if comment.head and not seen[comment.head] then
+      seen[comment.head] = true
+      table.insert(heads, comment.head)
     end
   end
-  return "Code review comments."
+  local branch = store.branch()
+  local where = branch and branch ~= "HEAD" and string.format(" on branch %s", branch) or ""
+  if #heads == 0 then
+    return first
+  elseif #heads == 1 then
+    return string.format("%s\nReview made against HEAD %s%s.", first, heads[1], where)
+  end
+  -- Comments from several commits: naming the current branch would overclaim.
+  return string.format("%s\nComments were made against HEAD %s.", first, table.concat(heads, ", "))
+end
+
+---The code the comment was written on, quoted under it. One line pins the
+---context; trailing whitespace is dropped and a blank line quotes nothing.
+---@param comment ReviewerComment
+---@return string|nil
+local function quote(comment)
+  if not comment.excerpt then
+    return nil
+  end
+  local text = comment.excerpt:gsub("%s+$", "")
+  if text == "" then
+    return nil
+  end
+  return "> " .. text
+end
+
+---Comments whose quoted line no longer holds the code the reviewer saw. Only a
+---comment carrying an excerpt can be checked; an old-side or revision comment
+---has no file to compare against and is never reported. One read per file and
+---scope keeps a large diff from being re-read for every comment.
+---@param all ReviewerComment[]
+---@return ReviewerComment[]
+function M.find_drifted(all)
+  local out = {}
+  local cache = {}
+  for _, comment in ipairs(all) do
+    if comment.excerpt then
+      local key = (comment.scope or "") .. "\0" .. comment.file
+      local lines = cache[key]
+      if lines == nil then
+        lines = store.lines(comment.file, comment.scope) or false
+        cache[key] = lines
+      end
+      local current = lines and lines[comment.line] or nil
+      if current ~= comment.excerpt then
+        table.insert(out, comment)
+      end
+    end
+  end
+  return out
+end
+
+---Ask once, before sending, when a commented line changed under its comment.
+---The agent would apply the comment to different code, so this is the one
+---confirmation worth showing even with `silent` on.
+---@param all ReviewerComment[]
+---@return boolean send
+local function confirm_anchors(all)
+  local stale = M.find_drifted(all)
+  if #stale == 0 then
+    return true
+  end
+  local where = location.format(stale[1])
+  if #stale > 1 then
+    where = string.format("%s and %d more", where, #stale - 1)
+  end
+  -- A range is anchored by its first line only, so say so rather than imply
+  -- the whole range was re-checked.
+  local ranges = false
+  for _, comment in ipairs(stale) do
+    if comment.end_line then
+      ranges = true
+      break
+    end
+  end
+  local choice = vim.fn.confirm(
+    string.format(
+      "%d comment(s) no longer match the code at their line (%s).%s\nSend anyway?",
+      #stale,
+      where,
+      ranges and "\nOnly the first line of a multi-line comment is compared." or ""
+    ),
+    "&Send\n&Cancel",
+    2
+  )
+  if choice == 1 then
+    return true
+  end
+  notify("Send cancelled; comments kept", vim.log.levels.INFO)
+  return false
 end
 
 ---Plain-text markdown payload, the form documented in the README. Sidekick gets
@@ -39,6 +135,10 @@ function M.generate_markdown(all)
   for i, comment in ipairs(all) do
     table.insert(lines, string.format("%d. `%s`", i, location.format(comment)))
     table.insert(lines, (comment.text:gsub("\n", " ")))
+    local quoted = quote(comment)
+    if quoted then
+      table.insert(lines, quoted)
+    end
     table.insert(lines, "")
   end
   return table.concat(lines, "\n")
@@ -127,6 +227,10 @@ local function payload_text(all)
     end
     table.insert(lines, ref)
     table.insert(lines, { { (comment.text:gsub("\n", " ")) } })
+    local quoted = quote(comment)
+    if quoted then
+      table.insert(lines, { { quoted } })
+    end
     table.insert(lines, {})
   end
   return lines
@@ -143,6 +247,10 @@ function M.to_sidekick()
   local all = store.get_all()
   if #all == 0 then
     notify("No comments to send", vim.log.levels.WARN)
+    return
+  end
+
+  if not confirm_anchors(all) then
     return
   end
 

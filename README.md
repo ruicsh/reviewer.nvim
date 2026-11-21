@@ -110,15 +110,19 @@ One JSON store per repository and branch, in `~/.local/share/nvim/reviewer/<repo
 
 A comment's identity is `file`, `line`, `side`, and `scope`. `scope` names the slice of the repository the comment is about: the working tree (empty), `staged`, `unstaged`, or `untracked` in a fugitive status buffer, and `staged`, `conflict:2`, `commit:abc1234`, or `rev:abc1234..def5678` in codediff. Comments are therefore isolated by content, not by surface: a staged line commented in a fugitive status buffer and the same index line commented in codediff are one comment, while a working-tree comment and a commit comment on the same file line are two.
 
+Each comment also records the text of its first line and the short HEAD it was written at. Before sending, reviewer.nvim compares that text with the same slice; if the line changed, it names the affected comment and asks whether to send anyway, since the line numbers may now point at different code. Old-side and revision comments carry no excerpt, because their content has no file to read back at that path.
+
 ## Send format
 
-`<localleader>S` sends a markdown list. Each comment is a reference line, then its text on the next line, then a blank line:
+`<localleader>S` sends a markdown list. The header names the state the line numbers refer to, then each comment is a reference line, its text, the reviewed code as a quote, and a blank line:
 
 ```
 Code review comments (`~` = old side).
+Review made against HEAD abc1234 on branch main.
 
 1. `src/api.ts:23`
 endpoint does not handle errors
+> const data = await res.json()
 
 2. `src/utils.ts:~10`
 old implementation was cleaner
@@ -128,6 +132,7 @@ whole file needs a pass
 
 4. `src/db.ts:8-19`
 this block duplicates the retry logic
+> if (!retry) throw err
 
 ```
 
@@ -143,7 +148,7 @@ make test-fugitive  # end-to-end against a real fugitive status buffer
 make test-codediff  # end-to-end against a real codediff session
 ```
 
-`tests/test_reviewer.lua` runs headless: store CRUD, branch-scoped paths, scope isolation, fugitive position derivation, markdown shape, and the clear-on-success / keep-on-failure send behavior.
+`tests/test_reviewer.lua` runs headless: store CRUD, branch-scoped paths, scope isolation, fugitive position derivation, markdown shape, the stale-anchor check before send, and the clear-on-success / keep-on-failure send behavior.
 
 `tests/test_fugitive.lua` opens a real `:Git` buffer in a throwaway repo: it expands a hunk, checks that the cursor maps to the right file line and side, and that a comment's box follows the hunk through collapse, expand, and a status rebuild. It skips when vim-fugitive is not installed.
 

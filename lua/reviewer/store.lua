@@ -12,6 +12,11 @@ local data_dir = vim.fn.stdpath("data") .. "/reviewer"
 ---  `unstaged`, ...). The same file and line can exist in two scopes with
 ---  different content, so scope is part of a comment's identity.
 ---@field text string
+---@field excerpt? string text of the comment's first line when it was written;
+---  nil for a file comment, an old-side line, and a scope with no file to read.
+---  `send` compares it against the same slice before sending to catch a line
+---  that moved, so the agent never applies a comment to different code.
+---@field head? string short HEAD the comment was written against
 
 ---@type table<string, ReviewerComment[]>
 M.comments = {}
@@ -79,6 +84,85 @@ end
 ---@return string|nil
 function M.root()
   return repo_root or git_line({ "git", "rev-parse", "--show-toplevel" })
+end
+
+---Short HEAD of the reviewed repository, or nil outside one. Comments record it
+---so the payload names the state the line numbers refer to.
+---@return string|nil
+function M.head()
+  local root = M.root()
+  if not root then
+    return nil
+  end
+  return git_line({ "git", "-C", root, "rev-parse", "--short", "HEAD" })
+end
+
+---Branch the store is keyed to, or the current branch of the resolved root.
+---@return string|nil
+function M.branch()
+  local root = M.root()
+  if not root then
+    return nil
+  end
+  if root == repo_root and repo_branch then
+    return repo_branch
+  end
+  return branch_of(root)
+end
+
+---Scopes whose line text can be read back: the working tree, and the index when
+---it is a diff's new side. A commit, revision range, conflict stage, and every
+---old-side line name content that has no file at this path now, so they carry no
+---excerpt and are never checked for drift.
+---@param scope string|nil
+---@return boolean
+local function readable_scope(scope)
+  return scope == nil or scope == "" or scope == "unstaged" or scope == "untracked" or scope == "staged"
+end
+
+---All lines of the slice `scope` refers to, or nil when it cannot be read: no
+---repository or a file missing from that slice. Line endings are normalized, so
+---a CRLF index and a CRLF working tree compare equal.
+---@param file string
+---@param scope? string
+---@return string[]|nil
+function M.lines(file, scope)
+  local root = M.root()
+  if not root then
+    return nil
+  end
+  local out
+  if scope == "staged" then
+    out = vim.fn.systemlist({ "git", "-C", root, "show", ":" .. file })
+    if vim.v.shell_error ~= 0 then
+      return nil
+    end
+  else
+    local handle = io.open(vim.fs.joinpath(root, file), "r")
+    if not handle then
+      return nil
+    end
+    out = {}
+    for text_line in handle:lines() do
+      table.insert(out, text_line)
+    end
+    handle:close()
+  end
+  for i, text_line in ipairs(out) do
+    out[i] = text_line:gsub("\r$", "")
+  end
+  return out
+end
+
+---Text of `line` in the slice `scope` refers to, or nil when it cannot be read:
+---a deleted file or a line past the end.
+---@param file string
+---@param line number
+---@param scope? string
+---@return string|nil
+function M.line_text(file, line, scope)
+  local lines = M.lines(file, scope)
+  return lines and lines[line] or nil
 end
 
 ---One store per (repository, branch): comments never leak across branches.
@@ -177,6 +261,13 @@ function M.add(file, line, text, side, end_line, scope)
     scope = scope,
     text = text,
   }
+  -- Capture the anchor now: only a new-side line over the working tree or the
+  -- index can be read back later, and only the first line of a range is needed
+  -- to notice that the code moved.
+  if line > 0 and comment.side == "new" and readable_scope(scope) then
+    comment.excerpt = M.line_text(file, line, scope)
+  end
+  comment.head = M.head()
   table.insert(M.comments[file], comment)
   persist()
   return comment

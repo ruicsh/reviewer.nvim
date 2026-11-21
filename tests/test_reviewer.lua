@@ -369,6 +369,95 @@ local function main()
   eq(store.count(), 0, "send clears comments")
   eq(#vim.fn.glob(vim.fn.stdpath("data") .. "/reviewer/*.json", false, true), 0, "send removes store file")
 
+  -- A comment records the code at its line and the HEAD it was written at, so a
+  -- later send can tell when the agent moved that code.
+  vim.fn.writefile({ "local one = 1", "local two = 2", "local three = 3" }, repo .. "/anchored.lua")
+  git("add", "anchored.lua")
+  git("commit", "-qm", "anchor base")
+  store.add("anchored.lua", 2, "check this")
+  local anchored = store.get_all()[1]
+  eq(anchored.excerpt, "local two = 2", "excerpt captures the commented line")
+  eq(anchored.head, git("rev-parse", "--short", "HEAD")[1], "comment records its HEAD")
+  eq(#send.find_drifted(store.get_all()), 0, "an unchanged line is not drifted")
+  local anchored_md = send.generate_markdown()
+  assert(anchored_md:find("> local two = 2", 1, true), "payload quotes the commented line")
+  assert(
+    anchored_md:find("Review made against HEAD " .. anchored.head .. " on branch feature-x.", 1, true),
+    "payload names the HEAD and branch the line numbers refer to"
+  )
+
+  -- Only a new-side line over the working tree or the index can be read back;
+  -- an old-side line has no file to compare against.
+  local old_anchor = store.add("anchored.lua", 2, "old note", "old")
+  eq(old_anchor.excerpt, nil, "old-side comments carry no anchor")
+  store.delete(old_anchor.id)
+
+  -- The agent rewrote the line: the comment now points at different code, and
+  -- sending asks first.
+  vim.fn.writefile({ "local one = 1", "local TWO = 2", "local three = 3" }, repo .. "/anchored.lua")
+  eq(#send.find_drifted(store.get_all()), 1, "an edited line is drifted")
+  local orig_confirm = vim.fn.confirm
+  local asked
+  vim.fn.confirm = function(msg)
+    asked = msg
+    return 2
+  end
+  send.to_sidekick()
+  assert(asked and asked:find("no longer match", 1, true), "a drifted comment asks before sending")
+  eq(store.count(), 1, "cancelling the prompt keeps the comments")
+
+  -- Confirming sends anyway; the quoted line still shows what was reviewed.
+  vim.fn.confirm = function()
+    return 1
+  end
+  send.to_sidekick()
+  vim.fn.confirm = orig_confirm
+  assert(sent:find("> local two = 2", 1, true), "the stale payload keeps the reviewed line")
+  eq(store.count(), 0, "sending anyway clears the comments")
+
+  -- Comments from two commits name both heads, without claiming the current
+  -- branch for the older one.
+  vim.fn.writefile({ "v1" }, repo .. "/head-anchor.lua")
+  git("add", "head-anchor.lua")
+  git("commit", "-qm", "head one")
+  store.add("head-anchor.lua", 1, "first")
+  vim.fn.writefile({ "v2" }, repo .. "/head-anchor.lua")
+  git("add", "head-anchor.lua")
+  git("commit", "-qm", "head two")
+  store.add("head-anchor.lua", 1, "second")
+  local multi_head = send.generate_markdown():match("Comments were made against HEAD [^\n]+")
+  assert(multi_head, "two heads are named in the header")
+  assert(not multi_head:find("on branch", 1, true), "multiple heads do not name the current branch")
+  store.clear()
+
+  -- A staged comment is anchored to the index, so working-tree edits alone are
+  -- not drift, but a new `git add` is.
+  vim.fn.writefile({ "staged one", "staged two" }, repo .. "/staged-anchor.lua")
+  git("add", "staged-anchor.lua")
+  store.add("staged-anchor.lua", 2, "staged note", "new", nil, "staged")
+  eq(store.get_all()[1].excerpt, "staged two", "staged excerpt comes from the index")
+  vim.fn.writefile({ "staged one", "staged TWO" }, repo .. "/staged-anchor.lua")
+  eq(#send.find_drifted(store.get_all()), 0, "working-tree edits do not drift a staged comment")
+  git("add", "staged-anchor.lua")
+  eq(#send.find_drifted(store.get_all()), 1, "a rewritten index line is drifted")
+
+  -- A range is anchored by its first line, and the prompt says so instead of
+  -- implying the whole range was re-checked.
+  vim.fn.writefile({ "range one", "range two" }, repo .. "/range-anchor.lua")
+  store.add("range-anchor.lua", 1, "range note", "new", 2)
+  vim.fn.writefile({ "RANGE one", "range two" }, repo .. "/range-anchor.lua")
+  vim.fn.confirm = function(msg)
+    asked = msg
+    return 2
+  end
+  send.to_sidekick()
+  vim.fn.confirm = orig_confirm
+  assert(
+    asked and asked:find("first line of a multi-line comment", 1, true),
+    "a drifted range explains which line is compared"
+  )
+  store.clear()
+
   -- Without sidekick's location context, positions fall back to the plain form.
   store.add("src/a.lua", 3, "no context module")
   send.to_sidekick()

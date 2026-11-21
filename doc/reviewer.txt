@@ -169,15 +169,24 @@ commented in a fugitive status buffer and the same index line commented in
 codediff are one comment, while a working-tree comment and a commit comment on
 the same file line are two.
 
+Each comment also records the text of its first line and the short HEAD it was
+written at. Before sending, reviewer.nvim compares that text with the same
+slice; if the line changed, it names the affected comment and asks whether to
+send anyway. Old-side and revision comments carry no excerpt, because their
+content has no file to read back at that path.
+
 ================================================================================
 7. SENDING TO SIDEKICK                                    *reviewer-send*
 
-|<localleader>S| sends a markdown list. Each comment is a reference line, then its
-text on the next line, then a blank line: >text
-  Code review comments on the current diff (`~` = old side).
+|<localleader>S| sends a markdown list. The header names the state the line
+numbers refer to. Each comment is a reference line, its text, the reviewed code
+as a quote, then a blank line: >text
+  Code review comments (`~` = old side).
+  Review made against HEAD abc1234 on branch main.
 
   1. `src/api.ts:23`
   endpoint does not handle errors
+  > const data = await res.json()
 
   2. `src/utils.ts:~10`
   old implementation was cleaner
@@ -187,14 +196,16 @@ text on the next line, then a blank line: >text
 
   4. `src/db.ts:8-19`
   this block duplicates the retry logic
+  > if (!retry) throw err
 
 <
 A `~` before the line number marks the old (left) side of the diff; the header
 only mentions it when such a comment is present. Inline diffs never produce one,
 since the original pane is not shown. A bare path
 is a file-level comment. `start-end` is a multi-line comment.
-Comment text is flattened to one line. After sending, all comments
-and their inline marks are removed.
+Comment text is flattened to one line. The quoted code is the comment's first
+line, and is omitted for a file comment and a blank line. After sending, all
+comments and their inline marks are removed.
 
 The payload is built as sidekick text, so new-side comments are sent as that
 tool's own file reference (`@file#L10-20` for Claude, `@file :L10-L20`
