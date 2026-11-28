@@ -71,6 +71,7 @@ Ctrl+S
 Sleep 1s
 
 # Send both, and the agent pane comes back with the payload in its prompt.
+# Match a phrase short enough not to wrap in the agent pane.
 Type ",s"
-Wait+Screen /do not review the code/
+Wait+Screen /Comments from a code review/
 Sleep 3s
