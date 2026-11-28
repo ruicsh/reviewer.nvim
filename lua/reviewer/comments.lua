@@ -49,7 +49,7 @@ function M.add_at_cursor()
     return
   end
   if pos.at_file_anchor and store.get_file_comment(pos.file, pos.scope) then
-    notify("File comment already exists; use F to edit it", vim.log.levels.WARN)
+    notify("File comment already exists; use the file comment key to edit it", vim.log.levels.WARN)
     return
   end
 

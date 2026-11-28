@@ -38,13 +38,13 @@ end
 ---@type ReviewerKeys
 local defaults = {
   add_comment = "<localleader>a",
-  file_comment = "<localleader>F",
+  file_comment = "<localleader>A",
   edit_comment = "<localleader>e",
   delete_comment = "<localleader>d",
-  list_comments = "<localleader>c",
+  list_comments = "<localleader>l",
   next_comment = "]n",
   prev_comment = "[n",
-  send_comments = "<localleader>S",
+  send_comments = "<localleader>s",
   close_review = "<localleader>q",
 }
 

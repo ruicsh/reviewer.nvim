@@ -71,13 +71,13 @@ Options: >lua
     -- default; set it to false to disable that action.
     keys = {
       add_comment = "<localleader>a",
-      file_comment = "<localleader>F",
+      file_comment = "<localleader>A",
       edit_comment = "<localleader>e",
       delete_comment = "<localleader>d",
-      list_comments = "<localleader>c",
+      list_comments = "<localleader>l",
       next_comment = "]n",
       prev_comment = "[n",
-      send_comments = "<localleader>S",
+      send_comments = "<localleader>s",
       close_review = "<localleader>q",
     },
   }
@@ -122,13 +122,13 @@ identity on the server, so a local per-branch store would desynchronize.
 
 In a codediff diff or a fugitive status buffer: >text
   <localleader>a   Add a comment at the cursor or range        key: add_comment
-  <localleader>F   Add or edit a file-level comment           key: file_comment
+  <localleader>A   Add or edit a file-level comment           key: file_comment
   <localleader>e   Edit the comment at the cursor             key: edit_comment
   <localleader>d   Delete the comment at the cursor           key: delete_comment
-  <localleader>c   List all comments and jump to one          key: list_comments
+  <localleader>l   List all comments and jump to one          key: list_comments
   ]n               Next comment                               key: next_comment
   [n               Previous comment                           key: prev_comment
-  <localleader>S   Send all comments to sidekick, then clear  key: send_comments
+  <localleader>s   Send all comments to sidekick, then clear  key: send_comments
   <localleader>q   Clear comments and close the review tab    key: close_review
 <
 Set a `key` option to `false` to disable that action.
@@ -178,7 +178,7 @@ content has no file to read back at that path.
 ================================================================================
 7. SENDING TO SIDEKICK                                    *reviewer-send*
 
-|<localleader>S| sends a markdown list. The header says what to do with the
+|<localleader>s| sends a markdown list. The header says what to do with the
 comments and names the state the line numbers refer to. Each comment is a
 reference line, its text, the reviewed code as a quote, then a blank line: >text
   Comments from a code review (`~` = old side). Apply each one to the code; do

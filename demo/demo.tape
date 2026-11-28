@@ -71,6 +71,6 @@ Ctrl+S
 Sleep 1s
 
 # Send both, and the agent pane comes back with the payload in its prompt.
-Type ",S"
+Type ",s"
 Wait+Screen /do not review the code/
 Sleep 3s

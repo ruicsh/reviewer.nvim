@@ -57,13 +57,13 @@ opts = {
   -- default; set it to false to disable that action.
   keys = {
     add_comment = "<localleader>a",
-    file_comment = "<localleader>F",
+    file_comment = "<localleader>A",
     edit_comment = "<localleader>e",
     delete_comment = "<localleader>d",
-    list_comments = "<localleader>c",
+    list_comments = "<localleader>l",
     next_comment = "]n",
     prev_comment = "[n",
-    send_comments = "<localleader>S",
+    send_comments = "<localleader>s",
     close_review = "<localleader>q",
   },
 }
@@ -71,17 +71,17 @@ opts = {
 
 ## Keys
 
-| Key              | Option           | Action                                                       |
-| ---------------- | ---------------- | ------------------------------------------------------------ |
-| `<localleader>a` | `add_comment`    | Add a comment at the cursor line, or on the visual selection |
-| `<localleader>F` | `file_comment`   | Add or edit a file-level comment                             |
-| `<localleader>e` | `edit_comment`   | Edit the comment at the cursor                               |
-| `<localleader>d` | `delete_comment` | Delete the comment at the cursor                             |
-| `<localleader>c` | `list_comments`  | List all comments and jump to one                            |
-| `]n`             | `next_comment`   | Next comment                                                 |
-| `[n`             | `prev_comment`   | Previous comment                                             |
-| `<localleader>S` | `send_comments`  | Send all comments to sidekick, then clear them               |
-| `<localleader>q` | `close_review`   | Clear comments and close the review tab                      |
+| Key              | Option                | Action                                                       |
+| ---------------- | --------------------- | ------------------------------------------------------------ |
+| `<localleader>a` | `add_comment`         | Add a comment at the cursor line, or on the visual selection |
+| `<localleader>A` | `file_comment`        | Add or edit a file-level comment                             |
+| `<localleader>e` | `edit_comment`        | Edit the comment at the cursor                               |
+| `<localleader>d` | `delete_comment`      | Delete the comment at the cursor                             |
+| `<localleader>l` | `list_comments`       | List all comments and jump to one                            |
+| `]n`             | `next_comment`        | Next comment                                                 |
+| `[n`             | `prev_comment`        | Previous comment                                             |
+| `<localleader>s` | `send_comments`       | Send all comments to sidekick, then clear them               |
+| `<localleader>q` | `close_review`        | Clear comments and close the review tab                      |
 
 Diff buffers stay editable: no plugin key shadows a normal Vim editing key. In a fugitive status buffer `close_review` clears comments and detaches keys without closing the tab.
 
@@ -99,7 +99,7 @@ Each comment records its first line's text and the short HEAD at write time. Bef
 
 ## Send format
 
-`<localleader>S` sends a markdown list: a header naming the state and saying what to do with the list, then each comment's reference line, text, quoted code, and a blank line.
+`<localleader>s` sends a markdown list: a header naming the state and saying what to do with the list, then each comment's reference line, text, quoted code, and a blank line.
 
 ```
 Comments from a code review (`~` = old side). Apply each one to the code; do not review the code.
