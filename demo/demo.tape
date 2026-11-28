@@ -72,5 +72,5 @@ Sleep 1s
 
 # Send both, and the agent pane comes back with the payload in its prompt.
 Type ",S"
-Wait+Screen /Code review comments/
+Wait+Screen /do not review the code/
 Sleep 3s

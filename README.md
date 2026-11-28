@@ -99,11 +99,11 @@ Each comment records its first line's text and the short HEAD at write time. Bef
 
 ## Send format
 
-`<localleader>S` sends a markdown list: a header naming the state, then each comment's reference line, text, quoted code, and a blank line.
+`<localleader>S` sends a markdown list: a header naming the state and saying what to do with the list, then each comment's reference line, text, quoted code, and a blank line.
 
 ```
-Code review comments (`~` = old side).
-Review made against HEAD abc1234 on branch main.
+Comments from a code review (`~` = old side). Apply each one to the code; do not review the code.
+Comments were made against HEAD abc1234 on branch main.
 
 1. `src/api.ts:23`
 endpoint does not handle errors

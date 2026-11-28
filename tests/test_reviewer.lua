@@ -382,7 +382,11 @@ local function main()
   local anchored_md = send.generate_markdown()
   assert(anchored_md:find("> local two = 2", 1, true), "payload quotes the commented line")
   assert(
-    anchored_md:find("Review made against HEAD " .. anchored.head .. " on branch feature-x.", 1, true),
+    anchored_md:find("Apply each one to the code; do not review the code.", 1, true),
+    "payload tells the agent to apply the comments, not answer with a review"
+  )
+  assert(
+    anchored_md:find("Comments were made against HEAD " .. anchored.head .. " on branch feature-x.", 1, true),
     "payload names the HEAD and branch the line numbers refer to"
   )
 

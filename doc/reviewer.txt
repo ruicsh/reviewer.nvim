@@ -178,11 +178,12 @@ content has no file to read back at that path.
 ================================================================================
 7. SENDING TO SIDEKICK                                    *reviewer-send*
 
-|<localleader>S| sends a markdown list. The header names the state the line
-numbers refer to. Each comment is a reference line, its text, the reviewed code
-as a quote, then a blank line: >text
-  Code review comments (`~` = old side).
-  Review made against HEAD abc1234 on branch main.
+|<localleader>S| sends a markdown list. The header says what to do with the
+comments and names the state the line numbers refer to. Each comment is a
+reference line, its text, the reviewed code as a quote, then a blank line: >text
+  Comments from a code review (`~` = old side). Apply each one to the code; do
+  not review the code.
+  Comments were made against HEAD abc1234 on branch main.
 
   1. `src/api.ts:23`
   endpoint does not handle errors

@@ -17,16 +17,19 @@ function M.setup(o)
 end
 
 ---Explain `~` only when an old-side comment is present: inline diffs cannot
----produce one, and the clause is noise there. The rest of the header names the
----state the line numbers refer to, so the agent reads the right tree.
+---produce one, and the clause is noise there. The first sentence says what to
+---do with the list: without it an agent reads the comments as a review request
+---and answers with a review instead of changing the code. The rest of the
+---header names the state the line numbers refer to, so the agent reads the
+---right tree.
 ---@param all ReviewerComment[]
 ---@return string
 local function header(all)
-  local first = "Code review comments."
+  local first = "Comments from a code review. Apply each one to the code; do not review the code."
   local heads, seen = {}, {}
   for _, comment in ipairs(all) do
     if (comment.side or "new") == "old" then
-      first = "Code review comments (`~` = old side)."
+      first = "Comments from a code review (`~` = old side). Apply each one to the code; do not review the code."
     end
     if comment.head and not seen[comment.head] then
       seen[comment.head] = true
@@ -38,7 +41,7 @@ local function header(all)
   if #heads == 0 then
     return first
   elseif #heads == 1 then
-    return string.format("%s\nReview made against HEAD %s%s.", first, heads[1], where)
+    return string.format("%s\nComments were made against HEAD %s%s.", first, heads[1], where)
   end
   -- Comments from several commits: naming the current branch would overclaim.
   return string.format("%s\nComments were made against HEAD %s.", first, table.concat(heads, ", "))
